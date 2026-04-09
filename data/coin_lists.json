@@ -1,0 +1,125 @@
+{
+  "whitelist": {},
+  "blacklist": {},
+  "stats": {
+    "PARTIUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -54.2,
+      "last_trade": "2026-04-09T11:39:13.344748"
+    },
+    "XPINUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -28.78,
+      "last_trade": "2026-04-09T15:03:41.132748"
+    },
+    "TRADOORUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -11.86,
+      "last_trade": "2026-04-09T15:03:42.465853"
+    },
+    "AGTUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -41.79,
+      "last_trade": "2026-04-09T15:03:47.436898"
+    },
+    "GWEIUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -8.66,
+      "last_trade": "2026-04-09T16:39:32.757214"
+    },
+    "QTUMUSDT": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "total_pnl": 2.16,
+      "last_trade": "2026-04-09T16:39:34.216376"
+    },
+    "INXUSDT": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "total_pnl": 21.76,
+      "last_trade": "2026-04-09T16:39:35.702798"
+    },
+    "THETAUSDT": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "total_pnl": 1.79,
+      "last_trade": "2026-04-09T16:39:36.655139"
+    },
+    "CHRUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -11.11,
+      "last_trade": "2026-04-09T16:39:37.567096"
+    },
+    "HOLOUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -2.62,
+      "last_trade": "2026-04-09T16:39:39.090787"
+    },
+    "DYDXUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -20.0,
+      "last_trade": "2026-04-09T16:39:40.021670"
+    },
+    "VVVUSDT": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "total_pnl": 22.7,
+      "last_trade": "2026-04-09T18:56:55.593038"
+    },
+    "MAGMAUSDT": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "total_pnl": 28.96,
+      "last_trade": "2026-04-09T19:32:00.428553"
+    },
+    "AEROUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -3.41,
+      "last_trade": "2026-04-09T19:57:31.420274"
+    },
+    "WLDUSDT": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "total_pnl": 3.01,
+      "last_trade": "2026-04-09T19:57:31.712987"
+    },
+    "SAFEUSDT": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "total_pnl": 2.34,
+      "last_trade": "2026-04-09T19:57:31.998732"
+    },
+    "CHILLGUYUSDT": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": -36.59,
+      "last_trade": "2026-04-09T19:57:32.299656"
+    }
+  }
+}

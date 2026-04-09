@@ -1,0 +1,821 @@
+{
+  "whitelist": {
+    "NAORISUSDT": {
+      "reason": "STRONG_BUY x3 | Skor:79.8",
+      "added": "2026-04-09T22:47:18.571449",
+      "score": 79.8,
+      "rs": 3.95
+    }
+  },
+  "blacklist": {},
+  "history": {
+    "XPLUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "UNIUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 5,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "INTCUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 5,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "TONUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "DGBUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "PUMPUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 5,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "CRVUSDT": {
+      "strong_buy_count": 1,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "TROYUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "1000SHIBUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "AIOTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "MSTRUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "PIPPINUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 3,
+      "strong_sell_count": 2,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "STRONG_SELL"
+    },
+    "LTCUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 2,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "ONGUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 2,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "TRXUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "BASEDUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "WIFUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 3,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "ALGOUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 2,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "HIFIUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "XLMUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "SWARMSUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 3,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "OMUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "PENGUUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 3,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "CHESSUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "42USDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "SNTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "RENDERUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "DASHUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 5,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "MKRUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "1000BONKUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 2,
+      "sell_count": 1,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "BARDUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "KITEUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 2,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "GALAUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "BEATUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 2,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "EPTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "VVVUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 3,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "DRIFTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 3,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "PIXELUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 5,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "APTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "ONDOUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 1,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "ZROUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 5,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "TANSSIUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "FUNUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 2,
+      "strong_sell_count": 1,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "ASTERUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 1,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "SLERFUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "PARTIUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 5,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "VIRTUALUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 1,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "GRIFFAINUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 1,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "BLZUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "HBARUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 1,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "POLUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 5,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "BAKEUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "DYMUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 1,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "MUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 3,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "RVVUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "COINUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 3,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "ICPUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "OPUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 1,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "APRUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 4,
+      "strong_sell_count": 1,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "STRONG_SELL"
+    },
+    "NATGASUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 2,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "ETCUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 2,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "XPINUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "LITUSDT": {
+      "strong_buy_count": 1,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "STRONG_BUY"
+    },
+    "MAGICUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "COMBOUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "ZENUSDT": {
+      "strong_buy_count": 2,
+      "buy_count": 3,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "KERNELUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 1,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "NULSUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "LOKAUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "PLTRUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 1,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "EWYUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "RDNTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "TRUUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 3,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "SOLVUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 2,
+      "strong_sell_count": 1,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "AKEUSDT": {
+      "strong_buy_count": 2,
+      "buy_count": 3,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "HOODUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "KEYUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "PLAYUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "GIGGLEUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "TURBOUSDT": {
+      "strong_buy_count": 1,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "STRONG_BUY"
+    },
+    "XPTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 2,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "INUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 3,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "ATOMUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 1,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "MANAUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 1,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "LOOMUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "KAITOUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "SUPERUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "VOXELUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "SEIUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 1,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "TIAUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 4,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "BLUAIUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "TRIAUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 1,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "CFGUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 3,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "BUY"
+    },
+    "BDXNUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "FIOUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "SIGNUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:32:45.860173",
+      "last_category": "NOTR"
+    },
+    "AXSUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "SAPIENUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "AIXBTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "NOTR"
+    },
+    "MDTUSDT": {
+      "strong_buy_count": 0,
+      "buy_count": 0,
+      "sell_count": 5,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "SELL"
+    },
+    "NAORISUSDT": {
+      "strong_buy_count": 3,
+      "buy_count": 0,
+      "sell_count": 0,
+      "strong_sell_count": 0,
+      "last_seen": "2026-04-09T22:47:18.571449",
+      "last_category": "STRONG_BUY"
+    }
+  }
+}

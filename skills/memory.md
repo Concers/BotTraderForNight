@@ -1,0 +1,3 @@
+- [Ugur Erol Profili](user_profile.md) — $350 bakiye, $50x20x sabit islem, testnet, 45M-75M coinler
+- [Bot Mimarisi](project_architecture.md) — Dosya yapisi, bilinen sorunlar, Python 3.9
+- [Tercihler](feedback_preferences.md) — Pozisyon kapatma yok, otonom calisma, sabit marjin
