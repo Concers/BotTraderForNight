@@ -149,6 +149,10 @@ class MarketScanner:
         if df.empty or len(df) < 50:
             return None
 
+        # Olu coin filtresi: son 5 mumda hic hacim yoksa atla
+        if df["volume"].tail(5).sum() == 0:
+            return None
+
         df = run_all_indicators(df)
 
         close = df["close"].iloc[-1]
@@ -353,20 +357,22 @@ class MarketScanner:
                     f"RSI:{c.rsi:.0f} RVOL:{rvol_tag}"
                 )
 
-        # STRONG SELL
-        if s["strong_sell"]:
-            lines.append(f"\n🔴🔴 <b>STRONG SELL ({len(s['strong_sell'])})</b>")
-            for c in sorted(s["strong_sell"], key=lambda x: x.canslim_score)[:10]:
+        # STRONG SELL (olu coinleri gosterme)
+        real_strong_sell = [c for c in s["strong_sell"] if c.rsi < 99 and c.rvol > 0]
+        if real_strong_sell:
+            lines.append(f"\n🔴🔴 <b>STRONG SELL ({len(real_strong_sell)})</b>")
+            for c in sorted(real_strong_sell, key=lambda x: x.canslim_score)[:10]:
                 coin = c.symbol.replace("USDT", "")
                 lines.append(
                     f"  {coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
                     f"RSI:{c.rsi:.0f} RVOL:{c.rvol:.1f}x"
                 )
 
-        # SELL
-        if s["sell"]:
-            lines.append(f"\n🔴 <b>SELL ({len(s['sell'])})</b>")
-            for c in sorted(s["sell"], key=lambda x: x.canslim_score)[:10]:
+        # SELL (olu coinleri gosterme)
+        real_sell = [c for c in s["sell"] if c.rsi < 99 and c.rvol > 0]
+        if real_sell:
+            lines.append(f"\n🔴 <b>SELL ({len(real_sell)})</b>")
+            for c in sorted(real_sell, key=lambda x: x.canslim_score)[:10]:
                 coin = c.symbol.replace("USDT", "")
                 lines.append(
                     f"  {coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
@@ -377,7 +383,7 @@ class MarketScanner:
         lines.append(f"\n━━━━━━━━━━━━━━━━━━")
         lines.append(
             f"🟢🟢 {len(s['strong_buy'])} | 🟢 {len(s['buy'])} | "
-            f"⚪ {len(s['notr'])} | 🔴 {len(s['sell'])} | 🔴🔴 {len(s['strong_sell'])}"
+            f"⚪ {len(s['notr'])} | 🔴 {len(real_sell)} | 🔴🔴 {len(real_strong_sell)}"
         )
 
         return "\n".join(lines)

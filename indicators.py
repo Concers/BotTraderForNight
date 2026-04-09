@@ -108,6 +108,17 @@ def calculate_trend_slope(df: pd.DataFrame, length: int = 10) -> pd.DataFrame:
     return df
 
 
+def sanitize(df: pd.DataFrame) -> pd.DataFrame:
+    """NaN/Inf degerlerini temizle."""
+    df["rsi"] = df["rsi"].fillna(50).clip(0, 100)
+    df["adx"] = df["adx"].fillna(0).clip(0, 100)
+    if "volume_ratio" in df.columns:
+        df["volume_ratio"] = df["volume_ratio"].fillna(0)
+    if "atr" in df.columns:
+        df["atr"] = df["atr"].fillna(0)
+    return df
+
+
 def run_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Tum indikatorleri sirayla hesapla."""
     logger.info("Indikatorler hesaplaniyor...")
@@ -119,5 +130,6 @@ def run_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = calculate_adx(df)
     df = calculate_ema(df)
     df = calculate_trend_slope(df)
+    df = sanitize(df)
     logger.info("Tum indikatorler hesaplandi.")
     return df

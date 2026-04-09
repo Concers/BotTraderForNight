@@ -355,25 +355,52 @@ class TradingBot:
         logger.info("Bot kapatildi.")
 
     async def market_scanner_loop(self):
-        """Her 10 dakikada Market Roentgeni taramasi."""
-        await asyncio.sleep(30)  # Ilk tarama 30sn sonra
+        """
+        Scanner bazli islem sistemi.
+        Her 5dk mum kapanisinda:
+          1. Market Roentgeni tara
+          2. STRONG BUY -> LONG ac
+          3. STRONG SELL -> SHORT ac
+          4. Telegram'a rapor gonder
+        """
+        await asyncio.sleep(10)
         while self._monitoring:
             try:
-                logger.info("Market Scanner basliyor...")
-                await self.scanner.scan()
+                # Sonraki 5dk mum kapanisina senkronize ol
+                now = time.time()
+                next_candle = (int(now / 300) + 1) * 300
+                wait = next_candle - now + 5
+                logger.info(f"Sonraki mum kapanisina {wait:.0f}sn...")
+                await asyncio.sleep(wait)
 
-                # Telegram'a rapor gonder
+                logger.info("Market Scanner + Islem taramasi basliyor...")
+                await self.scanner.scan()
+                summary = self.scanner.get_summary()
+
+                # STRONG BUY -> LONG islem ac
+                for coin in summary.get("strong_buy", []):
+                    if coin.rvol >= 1.5 and coin.canslim_score >= 75:
+                        await self.process_signal("BUY", coin.symbol)
+
+                # STRONG SELL -> SHORT islem ac
+                for coin in summary.get("strong_sell", []):
+                    # RSI 100 olan bozuk veriler (RVOL 0, hacim yok)
+                    if coin.rsi >= 99 or coin.rvol <= 0:
+                        continue
+                    if coin.canslim_score <= 50 and coin.rvol >= 1.5:
+                        await self.process_signal("SELL", coin.symbol)
+
+                # Telegram rapor
                 report = self.scanner.generate_telegram_report()
                 await self.notifier.send_message(report)
 
                 # Watchlist guncelle
-                watchlist = self.scanner.update_watchlists()
-                await self.notifier.send_message(self.scanner.get_watchlist_report())
+                self.scanner.update_watchlists()
 
             except Exception as e:
                 logger.error(f"Scanner hatasi: {e}")
 
-            await asyncio.sleep(600)  # 10 dakika
+            await asyncio.sleep(10)  # Kisa bekleme, dongu basi senkronize ediyor
 
     async def _safe_scanner(self):
         """Scanner'i hata yutarak calistir."""
@@ -384,215 +411,7 @@ class TradingBot:
                 logger.error(f"Scanner crash (yeniden basliyor): {e}")
                 await asyncio.sleep(30)
 
-    async def _safe_scan(self):
-        """Scan'i hata yutarak calistir - ASLA durmasin."""
-        while self._monitoring:
-            try:
-                await self.auto_scan()
-            except Exception as e:
-                logger.error(f"Scan hatasi (yeniden basliyor): {e}")
-                await asyncio.sleep(10)
-
-    async def auto_scan(self):
-        """
-        Otomatik tarama dongusu:
-        1. CMC'den 45M-75M coinleri cek
-        2. Binance Futures'ta olanlari filtrele
-        3. Her coin icin 3dk ve 5dk mumlari analiz et
-        4. CANSLIM skoru yeterli olanlarda sinyal uret
-        """
-        logger.info("Otomatik tarayici baslatildi. Ilk tarama basliyor...")
-        await asyncio.sleep(2)
-
-        while self._monitoring:
-            try:
-                await self._run_scan_cycle()
-            except Exception as e:
-                logger.error(f"Tarama dongusu hatasi: {e}")
-
-            # Her 5 dakikada bir tara (538 coin ~4.5dk suruyor)
-            logger.info("Sonraki tarama 5 dakika sonra...")
-            await asyncio.sleep(300)
-
-    async def _run_scan_cycle(self):
-        """Tek bir tarama dongusunu calistir - TUM COINLER."""
-        # 1. Tum Binance Futures sembollerini al
-        futures_list = self.binance.get_all_futures_symbols()
-        if not futures_list:
-            logger.warning("Sembol listesi alinamadi.")
-            return
-
-        self._futures_symbols = set(futures_list)
-        tradeable = futures_list  # TUM COINLER
-
-        await self.notifier.send_message(
-            f"🔍 <b>TARAMA BASLADI</b>\n"
-            f"Toplam: {len(tradeable)} coin\n"
-            f"Analiz: 3dk + 5dk mumlar"
-        )
-
-        # BTC verisi (tum coinler icin ortak - 1 kez cek)
-        btc_df = self.binance.get_klines("BTCUSDT", interval="3m", limit=200)
-        if not btc_df.empty:
-            btc_df = run_all_indicators(btc_df)
-
-        signals_found = 0
-        scanned = 0
-        scan_start = time.time()
-
-        for symbol in tradeable:
-            if not self.risk.can_open_trade():
-                break
-            if symbol in self.risk.active_trades:
-                continue
-
-            try:
-                signal = await self._analyze_coin(symbol, btc_df)
-                scanned += 1
-                if signal:
-                    signals_found += 1
-                    await self.process_signal(signal["side"], symbol)
-            except Exception as e:
-                logger.error(f"{symbol} analiz hatasi: {e}")
-
-            # API rate limit (0.5sn - Binance limiti 1200 req/dk)
-            await asyncio.sleep(0.5)
-
-        scan_duration = time.time() - scan_start
-        self.journal.record_scan(scanned, signals_found, scan_duration)
-        logger.info(f"Tarama bitti: {scanned} coin, {signals_found} sinyal, {scan_duration:.0f}sn.")
-
-        # Ozet rapor
-        summary_j = self.journal.get_summary()
-        await self.notifier.send_message(
-            f"📊 <b>TARAMA TAMAMLANDI</b>\n"
-            f"Taranan: {scanned} coin | Sinyal: {signals_found}\n"
-            f"⏳ Sonraki tarama 3 dakika sonra.\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"📈 Toplam: {summary_j['total_trades']} islem | "
-            f"Acik: {summary_j['open']} | "
-            f"Kapanan: {summary_j['closed']}\n"
-            f"💰 PnL: ${summary_j['total_pnl']:+.2f} | "
-            f"Win: %{summary_j['win_rate']:.0f}"
-        )
-
-    async def _analyze_coin(self, symbol: str, btc_df) -> dict | None:
-        """
-        Tek bir coini analiz et.
-        Oncelik: 3dk mumlar (hizli sinyal). UT Bot zorunlu degil - skor karar verir.
-        """
-        # Vadeli islemde yoksa analiz yapma
-        if self._futures_symbols and symbol not in self._futures_symbols:
-            return None
-
-        # Blacklist kontrolu
-        if self.coin_lists.is_blacklisted(symbol):
-            return None
-
-        # --- 3 DAKIKALIK ANALIZ (ana timeframe) ---
-        df_3m = self.binance.get_klines(symbol, interval="3m", limit=200)
-        if df_3m.empty or len(df_3m) < 50:
-            return None
-        df_3m = run_all_indicators(df_3m)
-
-        # --- YON BELIRLEME (sikiласtirilmis) ---
-        close = df_3m["close"].iloc[-1]
-        vwap = df_3m["vwap"].iloc[-1]
-        ut = df_3m["ut_signal"].iloc[-1]
-        ema20 = df_3m["ema_20"].iloc[-1] if "ema_20" in df_3m.columns else close
-        ema50 = df_3m["ema_50"].iloc[-1] if "ema_50" in df_3m.columns else close
-        rsi = df_3m["rsi"].iloc[-1]
-        adx = df_3m["adx"].iloc[-1] if "adx" in df_3m.columns else 0
-
-        # ADX < 20 = trend yok, islem acma
-        if adx < 20:
-            return None
-
-        # HACIM ONAY: Son mum hacmi > 20 mum ortalama x 1.5
-        vol_spike = df_3m["volume_spike"].iloc[-1] if "volume_spike" in df_3m.columns else False
-        vol_ratio = df_3m["volume_ratio"].iloc[-1] if "volume_ratio" in df_3m.columns else 0
-        if not vol_spike and vol_ratio < 1.2:
-            return None  # Hacim onay yok, testere piyasa riski
-
-        # Yukari sinyaller say (daha katı: 6 uzerinden 4 olmali)
-        bull_signals = 0
-        if ut == 1: bull_signals += 1          # UT Bot BUY
-        if close > vwap: bull_signals += 1     # Fiyat > VWAP
-        if close > ema20: bull_signals += 1    # Fiyat > EMA20
-        if ema20 > ema50: bull_signals += 1    # EMA20 > EMA50 (trend onayi)
-        if 40 <= rsi <= 65: bull_signals += 1  # RSI saglikli
-        if adx > 25: bull_signals += 1         # Guclu trend
-
-        # Asagi sinyaller (SHORT)
-        bear_signals = 0
-        if ut == -1: bear_signals += 1          # UT Bot SELL
-        if close < vwap: bear_signals += 1      # Fiyat < VWAP
-        if close < ema20: bear_signals += 1     # Fiyat < EMA20
-        if ema20 < ema50: bear_signals += 1     # EMA20 < EMA50 (dusus trendi)
-        if 25 <= rsi <= 55: bear_signals += 1   # RSI bearish bolge
-        if adx > 25: bear_signals += 1          # Guclu trend
-
-        # En az 4/6 sinyal olmali (eski: 3/5)
-        if bull_signals >= 4:
-            side = "BUY"
-            if rsi > config.RSI_OVERBOUGHT:
-                return None
-        elif bear_signals >= 4:
-            side = "SELL"
-            if rsi < config.RSI_OVERSOLD:
-                return None
-        else:
-            return None
-
-        # --- CANSLIM SKORLAMA (min skor 70) ---
-        score = self.scorer.calculate_score(
-            df_3m, symbol, btc_df if btc_df is not None and not btc_df.empty else None
-        )
-
-        # SHORT icin skor esigi 70, LONG icin 75
-        min_score = 70 if side == "SELL" else config.MIN_CONFIDENCE_SCORE
-        if score["score"] < min_score:
-            self.journal.record_rejected(symbol, score, f"Skor {score['score']} < {min_score}")
-            return None
-
-        # T (Trend) bileseni: LONG min 60, SHORT min 50
-        min_trend = 50 if side == "SELL" else 60
-        if score["components"].get("T", 0) < min_trend:
-            self.journal.record_rejected(symbol, score, "Trend zayif")
-            return None
-
-        # --- 5DK DOGRULAMA (ZORUNLU) ---
-        # 5dk timeframe'de de ayni yonde trend olmali
-        try:
-            df_5m = self.binance.get_klines(symbol, interval="5m", limit=200)
-            if df_5m.empty or len(df_5m) < 50:
-                return None
-            df_5m = run_all_indicators(df_5m)
-
-            close_5m = df_5m["close"].iloc[-1]
-            vwap_5m = df_5m["vwap"].iloc[-1]
-            ema20_5m = df_5m["ema_20"].iloc[-1] if "ema_20" in df_5m.columns else close_5m
-
-            # 5dk'da da ayni yon olmali
-            if side == "BUY":
-                confirms_5m = close_5m > vwap_5m and close_5m > ema20_5m
-            else:
-                confirms_5m = close_5m < vwap_5m and close_5m < ema20_5m
-
-            if not confirms_5m:
-                self.journal.record_rejected(symbol, score, "5dk onay yok")
-                return None
-
-        except Exception:
-            return None
-
-        logger.info(
-            f"SINYAL: {symbol} {side} | Skor={score['score']} | "
-            f"UT={ut} | VWAP={'ustunde' if close > vwap else 'altinda'} | "
-            f"RSI={rsi:.0f} | ADX={adx:.0f} | 5dk=ONAY"
-        )
-
-        return {"side": side, "symbol": symbol, "score": score, "both_tf": True}
+    # auto_scan kaldirildi - artik market_scanner_loop tek islem sistemi
 
     async def monitor_positions(self):
         """
@@ -738,7 +557,7 @@ class TradingBot:
         # Telegram receiver olustur
         receiver = TelegramSignalReceiver(on_signal_callback=self.process_signal)
         receiver.status_callback = self.handle_status_command
-        receiver.scan_callback = self._run_scan_cycle
+        receiver.scan_callback = self.handle_market_command
         receiver.durum_callback = self.handle_durum_command
         receiver.rapor_callback = self.handle_rapor_command
         receiver.market_callback = self.handle_market_command
@@ -757,11 +576,10 @@ class TradingBot:
             # Monitor ve scan task'larini baslat
             loop = asyncio.get_event_loop()
             loop.create_task(self._safe_monitor())
-            loop.create_task(self._safe_scan())
             loop.create_task(self._safe_scanner())
             loop.create_task(self.periodic_report())
             loop.create_task(self.auto_shutdown(hours=3.0))
-            logger.info(">>> MONITOR + SCAN + SCANNER + 20DK RAPOR + 3 SAAT TIMER BASLATILDI <<<")
+            logger.info(">>> MONITOR + SCANNER + 20DK RAPOR + 3 SAAT TIMER BASLATILDI <<<")
 
         app.post_init = post_init
 
