@@ -2,15 +2,12 @@ from __future__ import annotations
 """
 Sanal Kasa Sistemi - Gercek para takibi.
 
-Binance testnet bakiyesi ($5000) ile GERCEK kasamiz ($350) FARKLI.
-Bu modul gercek parayi takip eder.
-
 Kurallar:
-  - Baslangic: $350
-  - Her islem: $50 marjin x 20x = $1000 notional
-  - Islem acildiginda kasadan $50 ayrilir
-  - Islem kapatildiginda $50 + PnL kasaya doner
-  - Kasa < $50 ise yeni islem acilamaz
+  - Baslangic: $150
+  - Her islem: $25 marjin x 20x = $500 notional
+  - Islem acildiginda kasadan $25 ayrilir
+  - Islem kapatildiginda $25 + PnL kasaya doner
+  - Kasa < $25 ise yeni islem acilamaz
 """
 
 import json
@@ -23,8 +20,8 @@ logger = setup_logger("Wallet")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 WALLET_FILE = os.path.join(DATA_DIR, "wallet.json")
 
-INITIAL_BALANCE = 350.0
-MARGIN_PER_TRADE = 50.0
+INITIAL_BALANCE = 150.0
+MARGIN_PER_TRADE = 25.0
 LEVERAGE = 20
 
 

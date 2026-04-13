@@ -93,14 +93,14 @@ class TradingBot:
             # Time-stop'u sifirla (ne zaman acildigini bilmiyoruz, 30dk ver)
             trade.entry_time = time.time()
 
-            # Kar durumuna gore TP flag'lerini ayarla
+            # Kar durumuna gore T1/T2 flag'lerini ayarla
             profit_pct = trade.current_profit_pct(mark)
-            if profit_pct >= 1.5:
-                trade.tp1_hit = True
-                trade.breakeven_activated = True
-                trade.stop_price = entry  # Breakeven
-            if profit_pct >= 3.0:
-                trade.tp2_hit = True
+            if profit_pct >= 2.0:
+                trade.breakeven_hit = True
+                trade.stop_price = entry * 1.003 if side == "BUY" else entry * 0.997
+            if profit_pct >= 4.0:
+                trade.t2_hit = True
+                trade.stop_price = entry * 1.015 if side == "BUY" else entry * 0.985
 
             emoji = "🟢" if pnl >= 0 else "🔴"
             msg_lines.append(
@@ -114,10 +114,12 @@ class TradingBot:
         await self.notifier.send_message("\n".join(msg_lines))
         logger.info(f"{len(positions)} acik pozisyon yuklendi.")
 
-    async def process_signal(self, side: str, symbol: str):
+    async def process_signal(self, side: str, symbol: str, coin_profile=None):
         """
         Ana sinyal isleme pipeline'i.
         Sequential Processing: Receipt -> Analysis -> Synthesis -> Execution -> Monitoring
+
+        coin_profile: SHORT icin scanner'dan gelen CoinProfile (CANSLIM atlanir).
         """
         logger.info(f"{'='*40}")
         logger.info(f"SINYAL ISLENIYOR: {side} {symbol}")
@@ -144,7 +146,7 @@ class TradingBot:
         if not self.risk.can_open_trade():
             return
 
-        # Kasa kontrolu ($50 marjin var mi?)
+        # Kasa kontrolu ($20 marjin var mi?)
         if not self.wallet.can_open_trade():
             logger.warning(f"Kasa yetersiz: ${self.wallet.available_balance:.2f}")
             return
@@ -171,14 +173,59 @@ class TradingBot:
 
         current_price = df["close"].iloc[-1]
 
-        # --- 3. CANSLIM SKORLAMA ---
-        score = self.scorer.calculate_score(
-            df, symbol, btc_df if not btc_df.empty else None
-        )
+        # --- 3. SKORLAMA ---
+        # Scanner'da hesaplanan setup'i kullan (cift hesaplama yapma).
+        # Eger coin_profile yoksa (manuel sinyal vb.) burada yeniden hesapla.
+        mood = self.scanner.market_mood if self.scanner else "NOTR"
 
-        if score["decision"] == "REJECTED":
-            self.journal.record_rejected(symbol, score, "Skor dusuk")
-            return
+        if side == "BUY":
+            from long_strategy import (
+                analyze_long_setup, setup_to_score_dict as long_to_dict,
+                should_open_long
+            )
+            if coin_profile is not None and coin_profile.long_setup:
+                setup = coin_profile.long_setup
+            else:
+                setup = analyze_long_setup(
+                    df,
+                    btc_perf_1h=self.scanner.btc_perf_1h if self.scanner else 0.0,
+                    price_change_24h=(coin_profile.price_change_24h
+                                       if coin_profile else 0.0),
+                )
+            if not should_open_long(setup, mood):
+                logger.info(
+                    f"{symbol} LONG skoru yetersiz: {setup['score']} (mood:{mood})"
+                )
+                self.journal.record_rejected(
+                    symbol, {"score": setup["score"], "components": {}},
+                    f"LONG skor dusuk: {setup['score']}"
+                )
+                return
+            score = long_to_dict(setup)
+        else:
+            from short_strategy import (
+                analyze_short_setup, setup_to_score_dict as short_to_dict,
+                should_open_short
+            )
+            if coin_profile is not None and coin_profile.short_setup:
+                setup = coin_profile.short_setup
+            else:
+                setup = analyze_short_setup(
+                    df,
+                    btc_perf_1h=self.scanner.btc_perf_1h if self.scanner else 0.0,
+                    price_change_24h=(coin_profile.price_change_24h
+                                       if coin_profile else 0.0),
+                )
+            if not should_open_short(setup, mood):
+                logger.info(
+                    f"{symbol} SHORT skoru yetersiz: {setup['score']} (mood:{mood})"
+                )
+                self.journal.record_rejected(
+                    symbol, {"score": setup["score"], "components": {}},
+                    f"SHORT skor dusuk: {setup['score']}"
+                )
+                return
+            score = short_to_dict(setup)
 
         # --- 4. RISK HESAPLAMA ---
         stop_info = self.risk.get_adaptive_stop_loss(df, current_price, side)
@@ -199,41 +246,28 @@ class TradingBot:
             logger.error("Pozisyon buyuklugu 0.")
             return
 
-        # --- 5. TELEGRAM RAPOR (her zaman gonder) ---
+        # --- 5. TELEGRAM RAPOR ---
         await self.notifier.send_signal_report(
             symbol, side, score, stop_info, quantity
         )
 
-        # --- 6. BINANCE EMIR (API key varsa) ---
-        if config.BINANCE_API_KEY and config.BINANCE_API_KEY != "your_binance_api_key":
-            self.binance.set_leverage(symbol, config.DEFAULT_LEVERAGE)
-
-            order = self.binance.place_market_order(symbol, side, quantity)
-            if not order:
-                await self.notifier.send_message(
-                    f"⚠️ {symbol} {side} sinyal gonderildi ama emir acilamadi."
-                )
-                return
-
-            stop_side = "SELL" if side == "BUY" else "BUY"
-            self.binance.place_stop_market(symbol, stop_side, stop_info["stop_price"])
-
-            self.risk.register_trade(
-                symbol=symbol, side=side,
-                entry_price=current_price,
-                stop_price=stop_info["stop_price"],
-                quantity=quantity,
-                time_limit_min=stop_info["time_limit_min"],
-            )
-            self.journal.record_trade_open(symbol, side, current_price,
-                                           stop_info["stop_price"], quantity, score)
-            self.wallet.open_trade(symbol, side, current_price)
-            logger.info(f"ISLEM ACILDI: {symbol} {side} @ {current_price} | Kasa: ${self.wallet.total_balance:.2f}")
-        else:
-            self.journal.record_trade_open(symbol, side, current_price,
-                                           stop_info["stop_price"], quantity, score)
-            self.wallet.open_trade(symbol, side, current_price)
-            logger.info(f"SINYAL (emir yok): {symbol} {side} @ {current_price} | Kasa: ${self.wallet.total_balance:.2f}")
+        # --- 6. SANAL ISLEM AC (Binance YOK, sadece sanal kasa) ---
+        self.risk.register_trade(
+            symbol=symbol, side=side,
+            entry_price=current_price,
+            stop_price=stop_info["stop_price"],
+            quantity=quantity,
+            time_limit_min=stop_info["time_limit_min"],
+        )
+        self.journal.record_trade_open(
+            symbol, side, current_price,
+            stop_info["stop_price"], quantity, score
+        )
+        self.wallet.open_trade(symbol, side, current_price)
+        logger.info(
+            f"SANAL ISLEM ACILDI: {symbol} {side} @ {current_price} | "
+            f"Kasa: ${self.wallet.total_balance:.2f}"
+        )
 
     async def _safe_monitor(self):
         """Monitor'u hata yutarak calistir - ASLA durmasin."""
@@ -252,7 +286,7 @@ class TradingBot:
                 positions = self.binance.get_open_positions()
                 balance = self.binance.get_account_balance()
                 if balance <= 0:
-                    balance = 350.0
+                    balance = 150.0
 
                 s = self.journal.get_summary()
                 total_pnl = sum(p["unrealized_pnl"] for p in positions)
@@ -282,7 +316,7 @@ class TradingBot:
 
                 # Kasa bilgisi
                 w = self.wallet
-                kasa_pnl_pct = ((w.total_balance - 350) / 350) * 100
+                kasa_pnl_pct = ((w.total_balance - w.data['initial_balance']) / w.data['initial_balance']) * 100
 
                 await self.notifier.send_message(
                     f"📊 <b>20DK RAPOR</b> ({datetime.now().strftime('%H:%M')})\n"
@@ -294,7 +328,8 @@ class TradingBot:
                     f"🎯 Win Rate: %{s['win_rate']:.0f} "
                     f"({w.data['wins']}W/{w.data['losses']}L)\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"{pos_text}"
+                    f"{pos_text}",
+                    category="rapor",
                 )
             except Exception as e:
                 logger.error(f"Periyodik rapor hatasi: {e}")
@@ -377,22 +412,85 @@ class TradingBot:
                 await self.scanner.scan()
                 summary = self.scanner.get_summary()
 
-                # STRONG BUY -> LONG islem ac
-                for coin in summary.get("strong_buy", []):
-                    if coin.rvol >= 1.5 and coin.canslim_score >= 75:
-                        await self.process_signal("BUY", coin.symbol)
+                # LONG SIGNAL - Oncelik: STRONG_BUY > BUY > NOTR,
+                # sonra previously_tracked, sonra RVOL, sonra long_score
+                from long_strategy import should_open_long
+                long_candidates = (
+                    summary.get("strong_buy", [])
+                    + summary.get("buy", [])
+                    + summary.get("notr", [])
+                )
 
-                # STRONG SELL -> SHORT islem ac
-                for coin in summary.get("strong_sell", []):
-                    # RSI 100 olan bozuk veriler (RVOL 0, hacim yok)
-                    if coin.rsi >= 99 or coin.rvol <= 0:
+                def _long_priority(c):
+                    cat_rank = (0 if c.category == "STRONG_BUY"
+                                else 1 if c.category == "BUY" else 2)
+                    tracked_rank = 0 if c.previously_tracked == "long" else 1
+                    return (cat_rank, tracked_rank, -c.rvol, -c.long_score)
+
+                long_candidates.sort(key=_long_priority)
+
+                for coin in long_candidates:
+                    if coin.rsi >= 99 or coin.long_score < 55:
                         continue
-                    if coin.canslim_score <= 50 and coin.rvol >= 1.5:
-                        await self.process_signal("SELL", coin.symbol)
+                    # Funding kontrarian filtresi: >%0.1 = LONG pahalli, atla
+                    if coin.funding_rate > 0.001:
+                        logger.info(
+                            f"LONG atlandi ({coin.symbol}): funding "
+                            f"%{coin.funding_rate*100:.3f} cok yuksek"
+                        )
+                        continue
+                    setup = {"score": coin.long_score}
+                    if not should_open_long(setup, summary.get("market_mood", "NOTR")):
+                        continue
+                    tracked_tag = " [TRACKED]" if coin.previously_tracked == "long" else ""
+                    logger.info(
+                        f"LONG SIGNAL: {coin.symbol}{tracked_tag} | "
+                        f"Cat:{coin.category} RVOL:{coin.rvol} "
+                        f"LongScore:{coin.long_score} F:%{coin.funding_rate*100:.3f}"
+                    )
+                    await self.process_signal("BUY", coin.symbol, coin_profile=coin)
+
+                # SHORT SIGNAL - Oncelik: STRONG_SELL > SELL > NOTR,
+                # sonra previously_tracked, sonra RVOL, sonra short_score
+                from short_strategy import should_open_short
+                short_candidates = (
+                    summary.get("strong_sell", [])
+                    + summary.get("sell", [])
+                    + summary.get("notr", [])
+                )
+
+                def _short_priority(c):
+                    cat_rank = (0 if c.category == "STRONG_SELL"
+                                else 1 if c.category == "SELL" else 2)
+                    tracked_rank = 0 if c.previously_tracked == "short" else 1
+                    return (cat_rank, tracked_rank, -c.rvol, -c.short_score)
+
+                short_candidates.sort(key=_short_priority)
+
+                for coin in short_candidates:
+                    if coin.rsi >= 99 or coin.short_score < 55:
+                        continue
+                    # Funding kontrarian filtresi: <-%0.1 = SHORT pahalli, atla
+                    if coin.funding_rate < -0.001:
+                        logger.info(
+                            f"SHORT atlandi ({coin.symbol}): funding "
+                            f"%{coin.funding_rate*100:.3f} cok dusuk"
+                        )
+                        continue
+                    setup = {"score": coin.short_score}
+                    if not should_open_short(setup, summary.get("market_mood", "NOTR")):
+                        continue
+                    tracked_tag = " [TRACKED]" if coin.previously_tracked == "short" else ""
+                    logger.info(
+                        f"SHORT SIGNAL: {coin.symbol}{tracked_tag} | "
+                        f"Cat:{coin.category} RVOL:{coin.rvol} "
+                        f"ShortScore:{coin.short_score} F:%{coin.funding_rate*100:.3f}"
+                    )
+                    await self.process_signal("SELL", coin.symbol, coin_profile=coin)
 
                 # Telegram rapor
                 report = self.scanner.generate_telegram_report()
-                await self.notifier.send_message(report)
+                await self.notifier.send_message(report, category="market")
 
                 # Watchlist guncelle
                 self.scanner.update_watchlists()
@@ -415,10 +513,9 @@ class TradingBot:
 
     async def monitor_positions(self):
         """
-        Sonsuz Trailing Stop ile pozisyon takibi.
-        Pozisyon ASLA kapatilmaz - sadece stop yukari cekilir.
-        Her %1.2 adimda stop guncellenir (%1.4 geride).
-        Pozisyon SADECE stop-loss'a dusunce kapanir.
+        v3.0 Stop-Only + T1/T2 pozisyon takibi.
+        Islem SADECE stop-loss patlarsa kapanir. Zaman limiti YOK.
+        T1 (%2): breakeven | T2 (%4): kar kilidi | Trailing: kademeli daraltma.
         """
         tick = 0
         while self._monitoring:
@@ -448,16 +545,82 @@ class TradingBot:
                 except Exception:
                     pass
 
+                # --- $5 ZARAR: COKLU TF OYU (5m+3m+1m) / 15sn cooldown ---
+                # $10 sert esik: coklu TF yine "kapat" dedi mi -> kapat
+                if self.risk.should_trigger_early_warning(
+                    symbol, current_price, threshold_dollars=-5.0
+                ):
+                    now_ts = time.time()
+                    cooldown_ok = (now_ts - trade.last_exit_vote_ts) >= 15.0
+                    if cooldown_ok:
+                        trade.last_exit_vote_ts = now_ts
+                        try:
+                            tf_results = {}
+                            for tf in ("5m", "3m", "1m"):
+                                df_tf = self.binance.get_klines(
+                                    symbol, interval=tf, limit=100
+                                )
+                                if df_tf.empty or len(df_tf) < 30:
+                                    continue
+                                df_tf = run_all_indicators(df_tf)
+                                tf_results[tf] = self.risk.tf_exit_vote(
+                                    df_tf, trade.side
+                                )
+
+                            if tf_results:
+                                decision = self.risk.multi_tf_exit_decision(
+                                    tf_results
+                                )
+                                pnl_usd = self.risk.get_pnl_dollars(
+                                    symbol, current_price
+                                )
+                                hard = self.risk.should_hard_close(
+                                    symbol, current_price, hard_threshold=-10.0
+                                )
+
+                                # Ilk kez tetikleniyorsa Telegram'a bildir
+                                first_time = not trade.early_warning_sent
+                                should_exit = (
+                                    decision["decision"] == "close"
+                                ) and (first_time or hard)
+
+                                if first_time or should_exit:
+                                    await self.notifier.send_multi_tf_warning(
+                                        symbol, trade.side, trade.entry_price,
+                                        current_price, pnl_usd,
+                                        trade.current_profit_pct(current_price),
+                                        tf_results, decision, hard, should_exit,
+                                    )
+                                    self.risk.mark_warning_sent(symbol)
+
+                                if should_exit:
+                                    reason_tag = (
+                                        "HARD_EXIT" if hard else "MULTI_TF_EXIT"
+                                    )
+                                    reason = (
+                                        f"{reason_tag} (${pnl_usd:.2f}) | "
+                                        f"{decision['vote_count']}/"
+                                        f"{decision['total_tf']} TF kapat"
+                                    )
+                                    logger.info(f"{reason_tag}: {symbol} | {reason}")
+                                    self.journal.record_trade_close(
+                                        symbol, current_price, reason
+                                    )
+                                    self.wallet.close_trade(
+                                        symbol, trade.side, trade.entry_price,
+                                        current_price, reason
+                                    )
+                                    self.risk.close_trade(symbol, reason)
+                                    continue
+                        except Exception as e:
+                            logger.error(f"Coklu TF oyu hatasi ({symbol}): {e}")
+
                 should_close, reason = self.risk.should_close(symbol, current_price)
 
                 if should_close:
-                    logger.info(f"POZISYON KAPATILIYOR: {symbol} | {reason}")
-                    try:
-                        self.binance.cancel_all_orders(symbol)
-                        self.binance.close_position(symbol, trade.side, trade.quantity)
-                    except Exception as e:
-                        logger.error(f"Kapatma emri hatasi ({symbol}): {e}")
+                    logger.info(f"SANAL KAPATILIYOR: {symbol} | {reason}")
 
+                    # Telegram rapor
                     try:
                         await self.notifier.send_close_report(
                             symbol, trade.side, trade.entry_price,
@@ -466,6 +629,7 @@ class TradingBot:
                     except Exception as e:
                         logger.error(f"Telegram rapor hatasi ({symbol}): {e}")
 
+                    # Sanal kasa + journal guncelle
                     self.journal.record_trade_close(symbol, current_price, reason)
                     pnl = self.wallet.close_trade(
                         symbol, trade.side, trade.entry_price,
@@ -497,17 +661,36 @@ class TradingBot:
         )
 
     async def handle_durum_command(self):
-        """/durum komutu - detayli rapor."""
+        """/durum komutu - detayli rapor (SANAL pozisyonlar)."""
         # Oncelikle KASA raporu gonder
         await self.notifier.send_message(self.wallet.get_report())
 
-        balance = self.binance.get_account_balance()
-        if balance <= 0:
-            balance = 350.0
+        # Sanal moda gore - Binance yerine active_trades'ten okuyoruz
+        positions = []
+        for sym, trade in self.risk.active_trades.items():
+            try:
+                mark = self.binance.get_current_price(sym)
+            except Exception:
+                mark = trade.entry_price
+            if mark == 0:
+                mark = trade.entry_price
 
-        positions = self.binance.get_open_positions()
+            if trade.side == "BUY":
+                pnl = (mark - trade.entry_price) * trade.quantity
+            else:
+                pnl = (trade.entry_price - mark) * trade.quantity
+
+            positions.append({
+                "symbol": sym,
+                "side": trade.side,
+                "entry_price": trade.entry_price,
+                "mark_price": mark,
+                "unrealized_pnl": pnl,
+                "quantity": trade.quantity,
+            })
+
         await self.notifier.send_full_report(
-            balance, positions, self.risk.active_trades
+            self.wallet.total_balance, positions, self.risk.active_trades
         )
 
         # Journal ozeti
@@ -550,6 +733,112 @@ class TradingBot:
         """/watchlist komutu."""
         await self.notifier.send_message(self.scanner.get_watchlist_report())
 
+    async def handle_resetkasa_command(self, update):
+        """/resetkasa EVET onayi sonrasi kasayi sifirla."""
+        try:
+            # Active trades + journal + wallet temizle
+            for sym in list(self.risk.active_trades.keys()):
+                self.risk.close_trade(sym, "RESET")
+            self.journal.reset() if hasattr(self.journal, "reset") else None
+            self.wallet.reset()
+            await update.message.reply_text(
+                f"✅ <b>KASA SIFIRLANDI</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💼 Yeni kasa: <b>${self.wallet.total_balance:.2f}</b>\n"
+                f"📂 Acik islem: 0\n"
+                f"📊 Journal: temizlendi",
+                parse_mode="HTML",
+            )
+            logger.info("KASA RESET: /resetkasa ile sifirlandi")
+        except Exception as e:
+            logger.error(f"Reset hatasi: {e}")
+            await update.message.reply_text(f"❌ Reset hatasi: {e}")
+
+    async def handle_pozisyonlar_command(self):
+        """/pozisyonlar - acik LONG/SHORT pozisyonlar (sanal)."""
+        trades = self.risk.active_trades
+
+        if not trades:
+            await self.notifier.send_message(
+                f"📂 <b>POZISYONLAR</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"Acik pozisyon yok.\n\n"
+                f"💼 Kasa: ${self.wallet.total_balance:.2f}\n"
+                f"💵 Kullanilabilir: ${self.wallet.available_balance:.2f}"
+            )
+            return
+
+        long_list = []
+        short_list = []
+        total_pnl = 0
+
+        for sym, trade in trades.items():
+            try:
+                price = self.binance.get_current_price(sym)
+            except Exception:
+                price = trade.entry_price
+
+            if price == 0:
+                price = trade.entry_price
+
+            pct = trade.current_profit_pct(price)
+            # Notional bazli PnL ($1000)
+            notional = trade.quantity * trade.entry_price
+            pnl = (pct / 100) * notional
+            total_pnl += pnl
+
+            line = {
+                "symbol": sym,
+                "entry": trade.entry_price,
+                "current": price,
+                "pct": pct,
+                "pnl": pnl,
+                "stop": trade.stop_price,
+                "elapsed": trade.elapsed_minutes,
+                "breakeven": trade.breakeven_hit,
+            }
+
+            if trade.side == "BUY":
+                long_list.append(line)
+            else:
+                short_list.append(line)
+
+        lines = [
+            f"📂 <b>ACIK POZISYONLAR</b>",
+            f"━━━━━━━━━━━━━━━━━━",
+            f"💼 Kasa: ${self.wallet.total_balance:.2f}",
+            f"💰 Acik PnL: <b>${total_pnl:+.2f}</b>",
+            f"📊 Toplam: {len(trades)} | 🟢 LONG: {len(long_list)} | 🔴 SHORT: {len(short_list)}",
+        ]
+
+        if long_list:
+            lines.append(f"\n🟢 <b>LONG POZISYONLAR ({len(long_list)})</b>")
+            for p in sorted(long_list, key=lambda x: x["pnl"], reverse=True):
+                coin = p["symbol"].replace("USDT", "")
+                emoji = "🟢" if p["pnl"] >= 0 else "🔴"
+                be_tag = " 🛡" if p["breakeven"] else ""
+                lines.append(
+                    f"{emoji} <b>{coin}</b>{be_tag}\n"
+                    f"   Giris: {p['entry']} | Simdi: {p['current']}\n"
+                    f"   PnL: <b>${p['pnl']:+.2f}</b> (%{p['pct']:+.2f})\n"
+                    f"   Stop: {p['stop']:.6f} | Sure: {p['elapsed']:.0f}dk"
+                )
+
+        if short_list:
+            lines.append(f"\n🔴 <b>SHORT POZISYONLAR ({len(short_list)})</b>")
+            for p in sorted(short_list, key=lambda x: x["pnl"], reverse=True):
+                coin = p["symbol"].replace("USDT", "")
+                emoji = "🟢" if p["pnl"] >= 0 else "🔴"
+                be_tag = " 🛡" if p["breakeven"] else ""
+                lines.append(
+                    f"{emoji} <b>{coin}</b>{be_tag}\n"
+                    f"   Giris: {p['entry']} | Simdi: {p['current']}\n"
+                    f"   PnL: <b>${p['pnl']:+.2f}</b> (%{p['pct']:+.2f})\n"
+                    f"   Stop: {p['stop']:.6f} | Sure: {p['elapsed']:.0f}dk"
+                )
+
+        await self.notifier.send_message("\n".join(lines))
+
     def run(self):
         """Botu baslat."""
         logger.info("Bot baslatiliyor...")
@@ -562,16 +851,47 @@ class TradingBot:
         receiver.rapor_callback = self.handle_rapor_command
         receiver.market_callback = self.handle_market_command
         receiver.watchlist_callback = self.handle_watchlist_command
+        receiver.pozisyonlar_callback = self.handle_pozisyonlar_command
+        receiver.reset_callback = self.handle_resetkasa_command
         app = receiver.build_app()
 
         async def post_init(application):
             await receiver._drop_pending(application)
 
-            # Acik pozisyonlari yukle
-            try:
-                await self.recover_open_positions()
-            except Exception as e:
-                logger.error(f"Recovery hatasi (devam ediliyor): {e}")
+            # Ikinci botu (varsa) baslat - komutlar her iki botta da calissin
+            app2 = receiver.build_secondary_app()
+            if app2 is not None:
+                try:
+                    await app2.initialize()
+                    await app2.bot.delete_webhook(drop_pending_updates=True)
+                    await app2.start()
+                    await app2.updater.start_polling(drop_pending_updates=True)
+                    logger.info("Ikinci Telegram botu polling basladi.")
+                except Exception as e:
+                    logger.error(f"Ikinci bot baslatilamadi: {e}")
+
+            # Recovery: aktif islemler json'dan yuklendi mi?
+            recovered = list(self.risk.active_trades.keys())
+            recovery_text = ""
+            if recovered:
+                lines = [f"\n♻️ <b>RECOVERY: {len(recovered)} pozisyon yuklendi</b>"]
+                for sym in recovered:
+                    t = self.risk.active_trades[sym]
+                    side_txt = "LONG" if t.side == "BUY" else "SHORT"
+                    be = " 🛡" if t.breakeven_hit else ""
+                    lines.append(
+                        f"  {sym} {side_txt}{be} @ {t.entry_price} | Stop: {t.stop_price}"
+                    )
+                recovery_text = "\n".join(lines)
+
+            # Sanal kasa modu - Binance recovery yok
+            await self.notifier.send_message(
+                f"🤖 <b>Bot baslatildi (SANAL MOD)</b>\n"
+                f"💼 Kasa: ${self.wallet.total_balance:.2f}\n"
+                f"📊 Acik islem: {len(recovered)}/{config.MAX_OPEN_TRADES}\n"
+                f"💵 Kullanilabilir: ${self.wallet.available_balance:.2f}"
+                f"{recovery_text}"
+            )
 
             # Monitor ve scan task'larini baslat
             loop = asyncio.get_event_loop()

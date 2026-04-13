@@ -3,3 +3,13 @@ logs/
 __pycache__/
 *.pyc
 .venv/
+
+# Runtime state (her VPS kendi state'ini olussun)
+data/*.json
+reports/*.pdf
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+

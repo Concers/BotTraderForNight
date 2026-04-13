@@ -39,6 +39,31 @@ class BinanceClient:
             self._load_testnet_symbols()
             self._load_testnet_limits()
 
+    def get_funding_rate(self, symbol: str) -> float:
+        """
+        Binance Futures premiumIndex endpoint'inden anlik funding rate.
+        Pozitif: long'lar short'lara odeme yapiyor (LONG pahalli).
+        Negatif: short'lar long'lara odeme yapiyor (SHORT pahalli).
+        """
+        try:
+            data = self.public_client.mark_price(symbol=symbol)
+            return float(data.get("lastFundingRate", 0.0))
+        except Exception as e:
+            logger.debug(f"Funding rate alinamadi ({symbol}): {e}")
+            return 0.0
+
+    def get_all_funding_rates(self) -> dict[str, float]:
+        """Tum semboller icin funding rate (tek cagride)."""
+        try:
+            data = self.public_client.mark_price()
+            return {
+                item["symbol"]: float(item.get("lastFundingRate", 0.0))
+                for item in data
+            }
+        except Exception as e:
+            logger.error(f"Toplu funding rate alinamadi: {e}")
+            return {}
+
     def get_klines(self, symbol: str, interval: str = "1m",
                    limit: int = 200) -> pd.DataFrame:
         """Mum verilerini al (her zaman gercek Binance verileri)."""

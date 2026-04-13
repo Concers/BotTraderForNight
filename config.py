@@ -11,6 +11,9 @@ BINANCE_TESTNET = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
 # --- Telegram ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Ikinci bot (opsiyonel). Bos birakilirsa devre disi.
+TELEGRAM_BOT_TOKEN_2 = os.getenv("TELEGRAM_BOT_TOKEN_2", "").strip() or None
+TELEGRAM_CHAT_ID_2 = os.getenv("TELEGRAM_CHAT_ID_2", "").strip() or None
 
 # --- Risk Yonetimi ---
 MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "7"))

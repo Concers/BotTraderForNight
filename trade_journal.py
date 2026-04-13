@@ -51,6 +51,12 @@ class TradeJournal:
     def _save(self):
         _save_json(JOURNAL_FILE, self.data)
 
+    def reset(self):
+        """Tum islem, reddedilen ve tarama kayitlarini sil."""
+        self.data = {"trades": [], "rejected": [], "scans": []}
+        self._save()
+        logger.info("JOURNAL SIFIRLANDI")
+
     def record_trade_open(self, symbol: str, side: str, entry_price: float,
                           stop_price: float, quantity: float, score: dict):
         """Islem acildiginda kaydet."""

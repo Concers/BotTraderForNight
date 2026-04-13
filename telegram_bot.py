@@ -2,40 +2,72 @@ import asyncio
 from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from logger_setup import setup_logger
+from notification_prefs import NotificationPrefs, CATEGORIES
 import config
 
 logger = setup_logger("TelegramBot")
 
 
 class TelegramNotifier:
-    """Telegram mesaj gonderici."""
+    """Telegram mesaj gonderici. Chat basina bildirim kategorisi filtresi uygular."""
 
     def __init__(self):
-        self.bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
-        self.chat_id = config.TELEGRAM_CHAT_ID
-
-    async def send_message(self, text: str):
-        """Mesaj gonder."""
-        try:
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text=text,
-                parse_mode="HTML",
+        # (bot, chat_id, label) listesi - ikinci bot opsiyonel
+        self.targets = [
+            (Bot(token=config.TELEGRAM_BOT_TOKEN),
+             config.TELEGRAM_CHAT_ID, "primary")
+        ]
+        if config.TELEGRAM_BOT_TOKEN_2 and config.TELEGRAM_CHAT_ID_2:
+            self.targets.append(
+                (Bot(token=config.TELEGRAM_BOT_TOKEN_2),
+                 config.TELEGRAM_CHAT_ID_2, "secondary")
             )
-        except Exception as e:
-            logger.error(f"Telegram mesaj gonderilemedi: {e}")
+            logger.info("Ikinci Telegram botu aktif.")
+
+        # Geri uyumluluk (varolan kodda kullanilan)
+        self.bot = self.targets[0][0]
+        self.chat_id = self.targets[0][1]
+
+        # Bildirim ayarlari (chat basina kategori on/off)
+        self.prefs = NotificationPrefs()
+
+    async def send_message(self, text: str, category: str = None):
+        """
+        Mesaji hedeflere gonder. category verilirse, o kategoriyi kapatmis
+        chat'ler mesaji almaz. category=None: her zaman gider (sistem mesaji).
+        """
+        for bot, chat_id, label in self.targets:
+            if category and not self.prefs.is_enabled(chat_id, category):
+                continue
+            try:
+                await bot.send_message(
+                    chat_id=chat_id, text=text, parse_mode="HTML",
+                )
+            except Exception as e:
+                logger.error(f"Telegram mesaj gonderilemedi ({label}): {e}")
+
+    async def send_to_chat(self, chat_id: str, text: str):
+        """Belirli bir chat'e mesaj gonder (komut cevabi icin). Filtre uygulanmaz."""
+        for bot, cid, label in self.targets:
+            if str(cid) == str(chat_id):
+                try:
+                    await bot.send_message(
+                        chat_id=cid, text=text, parse_mode="HTML",
+                    )
+                except Exception as e:
+                    logger.error(f"send_to_chat hatasi ({label}): {e}")
+                return
 
     async def send_document(self, file_path: str, caption: str = ""):
-        """PDF/dosya gonder."""
-        try:
-            with open(file_path, "rb") as f:
-                await self.bot.send_document(
-                    chat_id=self.chat_id,
-                    document=f,
-                    caption=caption,
-                )
-        except Exception as e:
-            logger.error(f"Telegram dosya gonderilemedi: {e}")
+        """PDF/dosyayi tum hedef botlara gonder."""
+        for bot, chat_id, label in self.targets:
+            try:
+                with open(file_path, "rb") as f:
+                    await bot.send_document(
+                        chat_id=chat_id, document=f, caption=caption,
+                    )
+            except Exception as e:
+                logger.error(f"Telegram dosya gonderilemedi ({label}): {e}")
 
     async def send_signal_report(self, symbol: str, side: str, score: dict,
                                   stop_info: dict, quantity: float):
@@ -59,7 +91,7 @@ class TelegramNotifier:
             f"📦 Miktar: {quantity:.4f}\n"
             f"💹 Volatilite: %{stop_info['volatility_pct']}"
         )
-        await self.send_message(msg)
+        await self.send_message(msg, category="sinyal")
 
     async def send_close_report(self, symbol: str, side: str, entry_price: float,
                                  exit_price: float, reason: str):
@@ -78,7 +110,92 @@ class TelegramNotifier:
             f"📈 PnL: <b>%{pnl_pct:.2f}</b>\n"
             f"📋 Sebep: {reason}"
         )
-        await self.send_message(msg)
+        await self.send_message(msg, category="kapanma")
+
+    async def send_early_warning(self, symbol: str, side: str,
+                                  entry_price: float, current_price: float,
+                                  pnl_dollars: float, pnl_pct: float,
+                                  analysis: dict, auto_closing: bool):
+        """
+        $8 zarar erken uyarisi - detayli trend saglik raporu.
+        auto_closing=True ise bot otomatik kapatiyor.
+        """
+        side_txt = "LONG" if side == "BUY" else "SHORT"
+        header = "🚨 ERKEN KAPATMA" if auto_closing else "⚠️ ERKEN UYARI"
+        verdict = (
+            "Trend kirildi, pozisyon kapatiliyor."
+            if auto_closing else
+            "Trend hala saglikli, pozisyon tutuluyor."
+        )
+
+        reasons_txt = (
+            "\n".join(f"   • {r}" for r in analysis.get("reasons", []))
+            or "   • Bozulma sinyali yok"
+        )
+
+        msg = (
+            f"{header}: <b>{symbol} {side_txt}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💸 Zarar: <b>${pnl_dollars:+.2f}</b> (%{pnl_pct:+.2f})\n"
+            f"📍 Giris: {entry_price} | Simdi: {current_price}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🔬 <b>TREND SAGLIK</b>\n"
+            f"   RSI: {analysis['rsi']} | ADX: {analysis['adx']}"
+            f"{' ⬇' if analysis.get('adx_falling') else ''}\n"
+            f"   EMA trend: {analysis['ema_trend']}\n"
+            f"   Son mum: {analysis['last_candle']} | "
+            f"Karsi: {analysis['opposing_candles']}/3\n"
+            f"   Hacim: x{analysis['vol_ratio']}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📋 <b>Bozulma ({analysis['broken_count']}/5):</b>\n"
+            f"{reasons_txt}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 {verdict}"
+        )
+        await self.send_message(msg, category="uyari")
+
+    async def send_multi_tf_warning(self, symbol: str, side: str,
+                                     entry_price: float, current_price: float,
+                                     pnl_dollars: float, pnl_pct: float,
+                                     tf_results: dict, decision: dict,
+                                     hard: bool, closing: bool):
+        """
+        $5 zarar coklu TF (5m/3m/1m) oy raporu.
+        closing=True: kapatiliyor. hard=True: $10 sert esik asildi.
+        """
+        side_txt = "LONG" if side == "BUY" else "SHORT"
+        if closing:
+            header = "🚨 SERT KAPATMA" if hard else "🚨 COKLU TF KAPATMA"
+        else:
+            header = "⚠️ $5 ZARAR UYARISI"
+
+        lines = [
+            f"{header}: <b>{symbol} {side_txt}</b>",
+            f"━━━━━━━━━━━━━━━━━━",
+            f"💸 Zarar: <b>${pnl_dollars:+.2f}</b> (%{pnl_pct:+.2f})",
+            f"📍 Giris: {entry_price} | Simdi: {current_price}",
+            f"━━━━━━━━━━━━━━━━━━",
+            f"🗳️ <b>OYLAMA: {decision['vote_count']}/{decision['total_tf']} TF kapat</b>",
+        ]
+
+        for tf, r in tf_results.items():
+            vote_emoji = "❌" if r["vote"] == "close" else "✅"
+            trend_txt = "+" if r["trend"] > 0 else "-" if r["trend"] < 0 else "0"
+            rsi_txt = "+" if r["rsi_sig"] > 0 else "-" if r["rsi_sig"] < 0 else "0"
+            lines.append(
+                f"  {vote_emoji} <b>{tf}</b> | Trend:{trend_txt} "
+                f"RSI:{rsi_txt}({r['rsi']}) RVOL:{r['rvol']}x "
+                f"Skor:{r['score']}"
+            )
+
+        lines.append(f"━━━━━━━━━━━━━━━━━━")
+        if closing:
+            tag = " ($10 sert esik)" if hard else ""
+            lines.append(f"🎯 Pozisyon kapatiliyor{tag}.")
+        else:
+            lines.append(f"🎯 Trend tutuluyor, 15sn sonra yeniden oylanacak.")
+
+        await self.send_message("\n".join(lines), category="uyari")
 
     async def send_rejected_report(self, symbol: str, score: dict):
         """Reddedilen sinyal raporu."""
@@ -175,6 +292,10 @@ class TelegramSignalReceiver:
     def __init__(self, on_signal_callback):
         self.on_signal = on_signal_callback
         self.app = None
+        # /resetkasa onay bekleyen chat'ler: chat_id -> timestamp (30sn timeout)
+        self._reset_pending: dict[str, float] = {}
+        # Bildirim tercihleri - TelegramNotifier ile ayni dosyaya yazar/okur
+        self.prefs = NotificationPrefs()
 
     async def handle_message(self, update: Update,
                               context: ContextTypes.DEFAULT_TYPE):
@@ -193,6 +314,22 @@ class TelegramSignalReceiver:
                 f"Mesaj gecikti: {latency:.1f}sn > {config.LATENCY_MAX_SECONDS}sn | "
                 f"Mesaj: {text}"
             )
+            return
+
+        # /resetkasa ikinci asama: "EVET" onayi
+        import time as _t
+        chat_id = str(update.message.chat_id)
+        if text == "EVET" and chat_id in self._reset_pending:
+            ts = self._reset_pending.pop(chat_id)
+            if _t.time() - ts <= 30:
+                if hasattr(self, "reset_callback") and self.reset_callback:
+                    await self.reset_callback(update)
+                else:
+                    await update.message.reply_text("❌ Reset callback tanimli degil.")
+            else:
+                await update.message.reply_text(
+                    "⏱️ Onay suresi doldu (30sn). Tekrar /resetkasa yazin."
+                )
             return
 
         # Sinyal parse: "BUY ETHUSDT" veya "SELL BTCUSDT"
@@ -260,8 +397,148 @@ class TelegramSignalReceiver:
         if hasattr(self, "watchlist_callback") and self.watchlist_callback:
             await self.watchlist_callback()
 
+    async def handle_pozisyonlar(self, update: Update,
+                                  context: ContextTypes.DEFAULT_TYPE):
+        """/pozisyonlar komutu - acik LONG/SHORT pozisyonlar."""
+        if hasattr(self, "pozisyonlar_callback") and self.pozisyonlar_callback:
+            await self.pozisyonlar_callback()
+
+    async def handle_resetkasa(self, update: Update,
+                                context: ContextTypes.DEFAULT_TYPE):
+        """/resetkasa - iki asamali onayla kasayi sifirla. Sadece primary chat."""
+        import time as _t
+        chat_id = str(update.message.chat_id)
+        primary_id = str(config.TELEGRAM_CHAT_ID)
+        if chat_id != primary_id:
+            await update.message.reply_text(
+                "⛔ Bu komut sadece ana hesaptan kullanilabilir."
+            )
+            return
+
+        self._reset_pending[chat_id] = _t.time()
+        await update.message.reply_text(
+            "⚠️ <b>KASA SIFIRLAMA ONAYI</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "Wallet, acik islemler ve journal sifirlanacak.\n"
+            "Onaylamak icin 30sn icinde <b>EVET</b> yazin.",
+            parse_mode="HTML",
+        )
+
+    async def handle_bildirim(self, update: Update,
+                               context: ContextTypes.DEFAULT_TYPE):
+        """/bildirim - bildirim ayarlarini gor/degistir. Sadece komutu yazan chat'i etkiler."""
+        chat_id = str(update.message.chat_id)
+        args = (update.message.text or "").strip().split()[1:]
+
+        # Argumansiz: mevcut ayarlari goster
+        if not args:
+            await update.message.reply_text(
+                self.prefs.get_report(chat_id), parse_mode="HTML"
+            )
+            return
+
+        if len(args) < 2:
+            await update.message.reply_text(
+                "Kullanim:\n"
+                "  /bildirim &lt;tip&gt; ac|kapat\n"
+                "  /bildirim hepsi ac|kapat\n\n"
+                "Tipler: " + ", ".join(CATEGORIES),
+                parse_mode="HTML",
+            )
+            return
+
+        cat = args[0].lower()
+        action = args[1].lower()
+        if action not in ("ac", "aç", "kapat"):
+            await update.message.reply_text("Islem: 'ac' veya 'kapat' olmali.")
+            return
+
+        enabled = action in ("ac", "aç")
+
+        if cat == "hepsi":
+            self.prefs.set_all(chat_id, enabled)
+            durum = "ACILDI" if enabled else "KAPATILDI"
+            await update.message.reply_text(
+                f"🔔 Tum bildirimler {durum}.\n\n"
+                + self.prefs.get_report(chat_id),
+                parse_mode="HTML",
+            )
+            return
+
+        if cat not in CATEGORIES:
+            await update.message.reply_text(
+                f"Gecersiz tip: {cat}\nTipler: " + ", ".join(CATEGORIES)
+            )
+            return
+
+        self.prefs.set(chat_id, cat, enabled)
+        durum = "✅ ACILDI" if enabled else "❌ KAPATILDI"
+        await update.message.reply_text(
+            f"{durum}: <b>{cat}</b>\n\n" + self.prefs.get_report(chat_id),
+            parse_mode="HTML",
+        )
+
+    async def handle_komutlar(self, update: Update,
+                               context: ContextTypes.DEFAULT_TYPE):
+        """/komutlar - tum komutlari orneklerle listele."""
+        text = (
+            "📋 <b>TUM KOMUTLAR</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "<b>Bilgi</b>\n"
+            "• /durum — Detayli kasa + pozisyon raporu\n"
+            "• /pozisyonlar — Acik LONG/SHORT pozisyonlar\n"
+            "  (Kisa: /p)\n"
+            "• /status — Kisa bot durumu\n"
+            "• /rapor — Anlik PDF rapor olustur\n"
+            "\n"
+            "<b>Market</b>\n"
+            "• /market — Market Rontgeni simdi tara\n"
+            "• /scan — Taramayi elle tetikle\n"
+            "• /watchlist — Watchlist raporu\n"
+            "\n"
+            "<b>Sinyal (sadece metin)</b>\n"
+            "• BUY ETHUSDT — Manuel LONG\n"
+            "• SELL BTCUSDT — Manuel SHORT\n"
+            "\n"
+            "<b>Bildirim Ayarlari</b>\n"
+            "• /bildirim — Mevcut ayarlari goster\n"
+            "• /bildirim market kapat — Market rontgeni mesajlarini kapat\n"
+            "• /bildirim rapor ac — 20dk raporlari ac\n"
+            "• /bildirim uyari kapat — $5/$10 uyari mesajlarini kapat\n"
+            "• /bildirim sinyal kapat — Yeni pozisyon mesajlarini kapat\n"
+            "• /bildirim kapanma kapat — Pozisyon kapanma mesajlarini kapat\n"
+            "• /bildirim hepsi kapat — Hepsini kapat\n"
+            "• /bildirim hepsi ac — Hepsini ac\n"
+            "\n"
+            "<b>Kasa</b>\n"
+            "• /resetkasa — Kasayi sifirla (sadece ana hesap)\n"
+            "  Onay: 30sn icinde EVET yaz\n"
+            "\n"
+            "• /komutlar — Bu liste\n"
+        )
+        await update.message.reply_text(text, parse_mode="HTML")
+
+    def _register_handlers(self, app: Application):
+        """Handler'lari bir Application'a kaydet (primary + secondary ortak)."""
+        app.add_handler(CommandHandler("start", self.handle_start))
+        app.add_handler(CommandHandler("status", self.handle_status))
+        app.add_handler(CommandHandler("durum", self.handle_durum))
+        app.add_handler(CommandHandler("rapor", self.handle_rapor))
+        app.add_handler(CommandHandler("market", self.handle_market))
+        app.add_handler(CommandHandler("watchlist", self.handle_watchlist))
+        app.add_handler(CommandHandler("pozisyonlar", self.handle_pozisyonlar))
+        app.add_handler(CommandHandler("p", self.handle_pozisyonlar))
+        app.add_handler(CommandHandler("scan", self.handle_scan))
+        app.add_handler(CommandHandler("resetkasa", self.handle_resetkasa))
+        app.add_handler(CommandHandler("bildirim", self.handle_bildirim))
+        app.add_handler(CommandHandler("komutlar", self.handle_komutlar))
+        app.add_handler(CommandHandler("help", self.handle_komutlar))
+        app.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
+        )
+
     def build_app(self) -> Application:
-        """Telegram Application olustur."""
+        """Telegram Application olustur (birincil bot)."""
         self.app = (
             Application.builder()
             .token(config.TELEGRAM_BOT_TOKEN)
@@ -269,18 +546,21 @@ class TelegramSignalReceiver:
         )
         # Drop pending updates - eski birikimis mesajlari atla
         self.app.post_init = self._drop_pending
-
-        self.app.add_handler(CommandHandler("start", self.handle_start))
-        self.app.add_handler(CommandHandler("status", self.handle_status))
-        self.app.add_handler(CommandHandler("durum", self.handle_durum))
-        self.app.add_handler(CommandHandler("rapor", self.handle_rapor))
-        self.app.add_handler(CommandHandler("market", self.handle_market))
-        self.app.add_handler(CommandHandler("watchlist", self.handle_watchlist))
-        self.app.add_handler(CommandHandler("scan", self.handle_scan))
-        self.app.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
-        )
+        self._register_handlers(self.app)
         return self.app
+
+    def build_secondary_app(self):
+        """Ikinci bot Application'ini olustur. Token yoksa None doner."""
+        if not config.TELEGRAM_BOT_TOKEN_2:
+            return None
+        app2 = (
+            Application.builder()
+            .token(config.TELEGRAM_BOT_TOKEN_2)
+            .build()
+        )
+        self._register_handlers(app2)
+        self.app2 = app2
+        return app2
 
     async def _drop_pending(self, app: Application):
         """Eski birikimis mesajlari temizle."""

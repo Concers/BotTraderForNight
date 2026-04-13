@@ -1,0 +1,29 @@
+[Unit]
+Description=TradeBotForNight - Futures Trading Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tradebot
+Group=tradebot
+WorkingDirectory=/home/tradebot/BotTraderForNight
+ExecStart=/home/tradebot/BotTraderForNight/.venv/bin/python bot.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/tradebot/BotTraderForNight/logs/stdout.log
+StandardError=append:/home/tradebot/BotTraderForNight/logs/stderr.log
+
+# Kaynak kullanimini sinirla (kucuk VPS'ler icin)
+MemoryMax=512M
+CPUQuota=80%
+
+# Guvenlik
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/tradebot/BotTraderForNight
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target

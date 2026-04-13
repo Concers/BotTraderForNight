@@ -18,6 +18,8 @@ from logger_setup import setup_logger
 from binance_client import BinanceClient
 from indicators import run_all_indicators
 from scoring import CANSLIMScorer
+from short_strategy import analyze_short_setup
+from long_strategy import analyze_long_setup
 import json
 import os
 
@@ -48,6 +50,18 @@ class CoinProfile:
         self.relative_strength = data.get("relative_strength", 0)
         self.category = data.get("category", "NOTR")
         self.wick_ratio = data.get("wick_ratio", 0)
+        self.short_score = data.get("short_score", 0)
+        self.short_verdict = data.get("short_verdict", "NONE")
+        self.short_signals = data.get("short_signals", [])
+        self.short_setup = data.get("short_setup", {})
+        self.long_score = data.get("long_score", 0)
+        self.long_verdict = data.get("long_verdict", "NONE")
+        self.long_signals = data.get("long_signals", [])
+        self.long_setup = data.get("long_setup", {})
+        # Anlik funding rate (kontrarian filtre) - pozitif: LONG pahalli, negatif: SHORT pahalli
+        self.funding_rate = data.get("funding_rate", 0.0)
+        # Onceki taramada STRONG_BUY ise "long", STRONG_SELL ise "short", yoksa None
+        self.previously_tracked = data.get("previously_tracked", None)
 
 
 class MarketScanner:
@@ -61,6 +75,11 @@ class MarketScanner:
         self.btc_perf_24h = 0.0
         self.market_mood = "NOTR"  # BULL, BEAR, NOTR
         self.scan_time = ""
+        # Onceki taramadaki STRONG_BUY/STRONG_SELL coinleri hafizala (oncelik icin)
+        self._prev_strong_buy: set[str] = set()
+        self._prev_strong_sell: set[str] = set()
+        # Funding rates cache (tum semboller tek cagride)
+        self._funding_rates: dict[str, float] = {}
 
     async def scan(self) -> dict:
         """Tam market taramasi yap."""
@@ -91,6 +110,11 @@ class MarketScanner:
         except Exception as e:
             logger.error(f"Ticker alinamadi: {e}")
             return {}
+
+        # 2b. Tum funding rate'leri bir kerede cek
+        self._funding_rates = self.binance.get_all_funding_rates()
+        if self._funding_rates:
+            logger.info(f"Funding rate: {len(self._funding_rates)} sembol yuklendi")
 
         # 3. Hacim filtresi: 3M-15M$ 24h hacim (45M-75M mcap hedef)
         candidates = []
@@ -129,6 +153,15 @@ class MarketScanner:
         # 5. Sonuclari kategorize et
         self._categorize_results()
 
+        # 5b. Bu turun STRONG'larini bir sonraki tarama icin hafizala
+        new_strong_buy: set[str] = set()
+        new_strong_sell: set[str] = set()
+        for r in self.results:
+            if r.category == "STRONG_BUY":
+                new_strong_buy.add(r.symbol)
+            elif r.category == "STRONG_SELL":
+                new_strong_sell.add(r.symbol)
+
         # 6. Kaydet
         self._save_results()
 
@@ -137,6 +170,10 @@ class MarketScanner:
             f"Scanner tamamlandi: {len(self.results)} coin analiz edildi | "
             f"{duration:.0f}sn | Mood: {self.market_mood}"
         )
+
+        # Bir sonraki turda "previously_tracked" icin sakla
+        self._prev_strong_buy = new_strong_buy
+        self._prev_strong_sell = new_strong_sell
 
         return self.get_summary()
 
@@ -204,6 +241,20 @@ class MarketScanner:
 
         trend_score = score["components"].get("T", 0)
 
+        # SHORT setup analizi (bagimsiz motor)
+        short_setup = analyze_short_setup(
+            df,
+            btc_perf_1h=self.btc_perf_1h,
+            price_change_24h=coin["price_change_24h"],
+        )
+
+        # LONG setup analizi (bagimsiz motor)
+        long_setup = analyze_long_setup(
+            df,
+            btc_perf_1h=self.btc_perf_1h,
+            price_change_24h=coin["price_change_24h"],
+        )
+
         data = {
             "price": close,
             "volume_24h": coin["volume_24h"],
@@ -219,6 +270,20 @@ class MarketScanner:
             "canslim_score": score["score"],
             "relative_strength": round(rs, 2),
             "wick_ratio": round(wick_ratio, 1),
+            "short_score": short_setup["score"],
+            "short_verdict": short_setup["verdict"],
+            "short_signals": short_setup["signals"],
+            "short_setup": short_setup,
+            "long_score": long_setup["score"],
+            "long_verdict": long_setup["verdict"],
+            "long_signals": long_setup["signals"],
+            "long_setup": long_setup,
+            "funding_rate": self._funding_rates.get(symbol, 0.0),
+            "previously_tracked": (
+                "long" if symbol in self._prev_strong_buy
+                else "short" if symbol in self._prev_strong_sell
+                else None
+            ),
         }
 
         return CoinProfile(symbol, data)
@@ -258,6 +323,12 @@ class MarketScanner:
 
             # Igne orani yuksek = riskli
             if r.wick_ratio > 200: bear += 1
+
+            # FUNDING RATE - kontrarian sinyal
+            # >+0.05%: long'lar asiri, short risk dusuk (bear egilim)
+            # <-0.05%: short'lar asiri, long risk dusuk (bull egilim)
+            if r.funding_rate > 0.0005: bear += 1
+            elif r.funding_rate < -0.0005: bull += 1
 
             # Kategori belirle
             if bull >= 5:
@@ -321,13 +392,13 @@ class MarketScanner:
         }
 
     def generate_telegram_report(self) -> str:
-        """Telegram icin Market Roentgeni raporu."""
+        """Telegram icin Market Rontgeni raporu."""
         s = self.get_summary()
 
         mood_emoji = {"BULL": "🟢", "BEAR": "🔴", "NOTR": "⚪"}.get(s["market_mood"], "⚪")
 
         lines = [
-            f"🔬 <b>MARKET ROENTGENI</b> ({s['scan_time']})",
+            f"🔬 <b>MARKET RONTGENI</b> ({s['scan_time']})",
             f"━━━━━━━━━━━━━━━━━━",
             f"{mood_emoji} Piyasa: <b>{s['market_mood']}</b>",
             f"₿ BTC: %{s['btc_1h']:+.2f} (1s) | %{s['btc_24h']:+.2f} (24s)",
@@ -341,9 +412,11 @@ class MarketScanner:
             for c in sorted(s["strong_buy"], key=lambda x: x.canslim_score, reverse=True)[:10]:
                 coin = c.symbol.replace("USDT", "")
                 rvol_tag = f"🔥{c.rvol:.1f}x" if c.rvol >= 2.0 else f"{c.rvol:.1f}x"
+                tracked_tag = "🔄" if c.previously_tracked == "long" else ""
+                f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
-                    f"RSI:{c.rsi:.0f} RVOL:{rvol_tag} %{c.price_change_1h:+.1f}"
+                    f"  {tracked_tag}{coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
+                    f"RSI:{c.rsi:.0f} RVOL:{rvol_tag} F:%{f_pct:+.3f} %{c.price_change_1h:+.1f}"
                 )
 
         # BUY
@@ -363,9 +436,11 @@ class MarketScanner:
             lines.append(f"\n🔴🔴 <b>STRONG SELL ({len(real_strong_sell)})</b>")
             for c in sorted(real_strong_sell, key=lambda x: x.canslim_score)[:10]:
                 coin = c.symbol.replace("USDT", "")
+                tracked_tag = "🔄" if c.previously_tracked == "short" else ""
+                f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
-                    f"RSI:{c.rsi:.0f} RVOL:{c.rvol:.1f}x"
+                    f"  {tracked_tag}{coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
+                    f"RSI:{c.rsi:.0f} RVOL:{c.rvol:.1f}x F:%{f_pct:+.3f}"
                 )
 
         # SELL (olu coinleri gosterme)
@@ -377,6 +452,36 @@ class MarketScanner:
                 lines.append(
                     f"  {coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
                     f"RSI:{c.rsi:.0f} RVOL:{c.rvol:.1f}x"
+                )
+
+        # LONG/SHORT CANDIDATES (yeni motorlar) - kategoriden bagimsiz
+        all_coins = (s["strong_sell"] + s["sell"] + s["notr"]
+                     + s["buy"] + s["strong_buy"])
+
+        top_longs = sorted(
+            [c for c in all_coins if c.long_score >= 60 and c.rsi < 99],
+            key=lambda x: x.long_score, reverse=True
+        )[:8]
+        if top_longs:
+            lines.append(f"\n⬆️ <b>LONG ADAYLARI ({len(top_longs)})</b>")
+            for c in top_longs:
+                coin = c.symbol.replace("USDT", "")
+                lines.append(
+                    f"  {coin:8s} LongS:{c.long_score} {c.long_verdict} "
+                    f"RSI:{c.rsi:.0f} RS:{c.relative_strength:+.1f}"
+                )
+
+        top_shorts = sorted(
+            [c for c in all_coins if c.short_score >= 60 and c.rsi < 99],
+            key=lambda x: x.short_score, reverse=True
+        )[:8]
+        if top_shorts:
+            lines.append(f"\n⬇️ <b>SHORT ADAYLARI ({len(top_shorts)})</b>")
+            for c in top_shorts:
+                coin = c.symbol.replace("USDT", "")
+                lines.append(
+                    f"  {coin:8s} ShortS:{c.short_score} {c.short_verdict} "
+                    f"RSI:{c.rsi:.0f} RS:{c.relative_strength:+.1f}"
                 )
 
         # Ozet
@@ -400,6 +505,11 @@ class MarketScanner:
                 watchlist = json.load(f)
         else:
             watchlist = {"whitelist": {}, "blacklist": {}, "history": {}}
+
+        # Eski format uyumlulugu: eksik anahtarlari tamamla
+        watchlist.setdefault("whitelist", {})
+        watchlist.setdefault("blacklist", {})
+        watchlist.setdefault("history", {})
 
         now = datetime.now().isoformat()
 
