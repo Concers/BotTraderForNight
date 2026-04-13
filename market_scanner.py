@@ -425,9 +425,11 @@ class MarketScanner:
             for c in sorted(s["buy"], key=lambda x: x.canslim_score, reverse=True)[:10]:
                 coin = c.symbol.replace("USDT", "")
                 rvol_tag = f"🔥{c.rvol:.1f}x" if c.rvol >= 2.0 else f"{c.rvol:.1f}x"
+                tracked_tag = "🔄" if c.previously_tracked == "long" else ""
+                f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
-                    f"RSI:{c.rsi:.0f} RVOL:{rvol_tag}"
+                    f"  {tracked_tag}{coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
+                    f"RSI:{c.rsi:.0f} RVOL:{rvol_tag} F:%{f_pct:+.3f}"
                 )
 
         # STRONG SELL (olu coinleri gosterme)
@@ -449,9 +451,11 @@ class MarketScanner:
             lines.append(f"\n🔴 <b>SELL ({len(real_sell)})</b>")
             for c in sorted(real_sell, key=lambda x: x.canslim_score)[:10]:
                 coin = c.symbol.replace("USDT", "")
+                tracked_tag = "🔄" if c.previously_tracked == "short" else ""
+                f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
-                    f"RSI:{c.rsi:.0f} RVOL:{c.rvol:.1f}x"
+                    f"  {tracked_tag}{coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
+                    f"RSI:{c.rsi:.0f} RVOL:{c.rvol:.1f}x F:%{f_pct:+.3f}"
                 )
 
         # LONG/SHORT CANDIDATES (yeni motorlar) - kategoriden bagimsiz
@@ -466,9 +470,11 @@ class MarketScanner:
             lines.append(f"\n⬆️ <b>LONG ADAYLARI ({len(top_longs)})</b>")
             for c in top_longs:
                 coin = c.symbol.replace("USDT", "")
+                tracked_tag = "🔄" if c.previously_tracked == "long" else ""
+                f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {coin:8s} LongS:{c.long_score} {c.long_verdict} "
-                    f"RSI:{c.rsi:.0f} RS:{c.relative_strength:+.1f}"
+                    f"  {tracked_tag}{coin:8s} LongS:{c.long_score} {c.long_verdict} "
+                    f"RSI:{c.rsi:.0f} RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
 
         top_shorts = sorted(
@@ -479,9 +485,11 @@ class MarketScanner:
             lines.append(f"\n⬇️ <b>SHORT ADAYLARI ({len(top_shorts)})</b>")
             for c in top_shorts:
                 coin = c.symbol.replace("USDT", "")
+                tracked_tag = "🔄" if c.previously_tracked == "short" else ""
+                f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {coin:8s} ShortS:{c.short_score} {c.short_verdict} "
-                    f"RSI:{c.rsi:.0f} RS:{c.relative_strength:+.1f}"
+                    f"  {tracked_tag}{coin:8s} ShortS:{c.short_score} {c.short_verdict} "
+                    f"RSI:{c.rsi:.0f} RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
 
         # Ozet
