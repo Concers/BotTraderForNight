@@ -39,6 +39,42 @@ class BinanceClient:
             self._load_testnet_symbols()
             self._load_testnet_limits()
 
+    def get_orderbook_summary(self, symbol: str, depth: int = 20) -> dict:
+        """
+        Emir defteri (orderbook) ozeti.
+        Returns:
+          {
+            'bids_total': toplam alim USDT,
+            'asks_total': toplam satim USDT,
+            'ratio': bids / asks (>1 alim baskin, <1 satim baskin),
+            'top_bid': en yuksek alim,
+            'top_ask': en dusuk satim,
+            'spread_pct': bid-ask farki %,
+          }
+        """
+        try:
+            data = self.public_client.depth(symbol=symbol, limit=depth)
+            bids = [(float(p), float(q)) for p, q in data.get("bids", [])]
+            asks = [(float(p), float(q)) for p, q in data.get("asks", [])]
+            if not bids or not asks:
+                return {}
+            bids_usdt = sum(p * q for p, q in bids)
+            asks_usdt = sum(p * q for p, q in asks)
+            top_bid = bids[0][0]
+            top_ask = asks[0][0]
+            spread_pct = ((top_ask - top_bid) / top_bid) * 100 if top_bid else 0
+            return {
+                "bids_total": bids_usdt,
+                "asks_total": asks_usdt,
+                "ratio": bids_usdt / asks_usdt if asks_usdt > 0 else 0,
+                "top_bid": top_bid,
+                "top_ask": top_ask,
+                "spread_pct": spread_pct,
+            }
+        except Exception as e:
+            logger.error(f"Orderbook alinamadi ({symbol}): {e}")
+            return {}
+
     def get_funding_rate(self, symbol: str) -> float:
         """
         Binance Futures premiumIndex endpoint'inden anlik funding rate.

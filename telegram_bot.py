@@ -1,6 +1,9 @@
 import asyncio
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, filters, ContextTypes,
+    CallbackQueryHandler,
+)
 from logger_setup import setup_logger
 from notification_prefs import NotificationPrefs, CATEGORIES
 import config
@@ -31,10 +34,12 @@ class TelegramNotifier:
         # Bildirim ayarlari (chat basina kategori on/off)
         self.prefs = NotificationPrefs()
 
-    async def send_message(self, text: str, category: str = None):
+    async def send_message(self, text: str, category: str = None,
+                           reply_markup=None):
         """
         Mesaji hedeflere gonder. category verilirse, o kategoriyi kapatmis
         chat'ler mesaji almaz. category=None: her zaman gider (sistem mesaji).
+        reply_markup: InlineKeyboardMarkup (butonlar icin).
         """
         for bot, chat_id, label in self.targets:
             if category and not self.prefs.is_enabled(chat_id, category):
@@ -42,9 +47,25 @@ class TelegramNotifier:
             try:
                 await bot.send_message(
                     chat_id=chat_id, text=text, parse_mode="HTML",
+                    reply_markup=reply_markup,
                 )
             except Exception as e:
                 logger.error(f"Telegram mesaj gonderilemedi ({label}): {e}")
+
+    @staticmethod
+    def build_position_buttons(symbol: str) -> InlineKeyboardMarkup:
+        """Pozisyon mesaji butonlari: Grafik / Derinlik / Iptal."""
+        coin = symbol.replace("USDT", "")
+        tv_url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}.P"
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔍 Grafik", url=tv_url),
+                InlineKeyboardButton("📊 Derinlik", callback_data=f"depth:{symbol}"),
+            ],
+            [
+                InlineKeyboardButton("🚫 Iptal", callback_data=f"cancel:{symbol}"),
+            ],
+        ])
 
     async def send_to_chat(self, chat_id: str, text: str):
         """Belirli bir chat'e mesaj gonder (komut cevabi icin). Filtre uygulanmaz."""
@@ -91,7 +112,10 @@ class TelegramNotifier:
             f"📦 Miktar: {quantity:.4f}\n"
             f"💹 Volatilite: %{stop_info['volatility_pct']}"
         )
-        await self.send_message(msg, category="sinyal")
+        await self.send_message(
+            msg, category="sinyal",
+            reply_markup=self.build_position_buttons(symbol),
+        )
 
     async def send_close_report(self, symbol: str, side: str, entry_price: float,
                                  exit_price: float, reason: str):
@@ -478,6 +502,35 @@ class TelegramSignalReceiver:
             parse_mode="HTML",
         )
 
+    async def handle_button_callback(self, update: Update,
+                                      context: ContextTypes.DEFAULT_TYPE):
+        """
+        Inline buton tiklamalari:
+          depth:<SYMBOL> -> orderbook ozeti gonder
+          cancel:<SYMBOL> -> pozisyonu sanal kapatma istegi
+        """
+        query = update.callback_query
+        if not query:
+            return
+        await query.answer()  # Loading simgesini kapat
+        data = query.data or ""
+
+        if data.startswith("depth:"):
+            symbol = data.split(":", 1)[1]
+            if hasattr(self, "depth_callback") and self.depth_callback:
+                await self.depth_callback(query, symbol)
+            else:
+                await query.message.reply_text("Derinlik callback tanimli degil.")
+            return
+
+        if data.startswith("cancel:"):
+            symbol = data.split(":", 1)[1]
+            if hasattr(self, "cancel_callback") and self.cancel_callback:
+                await self.cancel_callback(query, symbol)
+            else:
+                await query.message.reply_text("Iptal callback tanimli degil.")
+            return
+
     async def handle_komutlar(self, update: Update,
                                context: ContextTypes.DEFAULT_TYPE):
         """/komutlar - tum komutlari orneklerle listele."""
@@ -533,6 +586,7 @@ class TelegramSignalReceiver:
         app.add_handler(CommandHandler("bildirim", self.handle_bildirim))
         app.add_handler(CommandHandler("komutlar", self.handle_komutlar))
         app.add_handler(CommandHandler("help", self.handle_komutlar))
+        app.add_handler(CallbackQueryHandler(self.handle_button_callback))
         app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
         )

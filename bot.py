@@ -742,6 +742,68 @@ class TradingBot:
         """/watchlist komutu."""
         await self.notifier.send_message(self.scanner.get_watchlist_report())
 
+    async def handle_depth_callback(self, query, symbol):
+        """Buton: 📊 Derinlik - Binance orderbook ozeti gonder."""
+        try:
+            book = self.binance.get_orderbook_summary(symbol, depth=20)
+            if not book:
+                await query.message.reply_text(
+                    f"⚠️ {symbol} orderbook alinamadi."
+                )
+                return
+            ratio = book["ratio"]
+            verdict = ("🟢 Alim baskin" if ratio > 1.3
+                       else "🔴 Satim baskin" if ratio < 0.77
+                       else "⚪ Dengeli")
+            text = (
+                f"📊 <b>DERINLIK: {symbol}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"{verdict}\n"
+                f"💰 Alim (bids): ${book['bids_total']:,.0f}\n"
+                f"💰 Satim (asks): ${book['asks_total']:,.0f}\n"
+                f"⚖️ Oran (bids/asks): <b>{ratio:.2f}</b>\n"
+                f"📍 En yuksek alim: {book['top_bid']}\n"
+                f"📍 En dusuk satim: {book['top_ask']}\n"
+                f"📏 Spread: %{book['spread_pct']:.3f}"
+            )
+            await query.message.reply_text(text, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Derinlik callback hatasi: {e}")
+            await query.message.reply_text(f"Hata: {e}")
+
+    async def handle_cancel_callback(self, query, symbol):
+        """Buton: 🚫 Iptal - sanal pozisyonu manuel kapat."""
+        try:
+            trade = self.risk.active_trades.get(symbol)
+            if not trade:
+                await query.message.reply_text(
+                    f"⚠️ {symbol} icin acik pozisyon yok."
+                )
+                return
+
+            try:
+                current_price = self.binance.get_current_price(symbol)
+            except Exception:
+                current_price = trade.entry_price
+
+            reason = "MANUAL_CANCEL (buton)"
+            self.journal.record_trade_close(symbol, current_price, reason)
+            pnl = self.wallet.close_trade(
+                symbol, trade.side, trade.entry_price, current_price, reason
+            )
+            self.risk.close_trade(symbol, reason)
+
+            await query.message.reply_text(
+                f"✅ <b>{symbol} IPTAL EDILDI</b>\n"
+                f"Giris: {trade.entry_price} | Cikis: {current_price}\n"
+                f"PnL: <b>${pnl:+.2f}</b>",
+                parse_mode="HTML",
+            )
+            logger.info(f"MANUEL IPTAL: {symbol} | PnL: ${pnl:.2f}")
+        except Exception as e:
+            logger.error(f"Iptal callback hatasi: {e}")
+            await query.message.reply_text(f"Hata: {e}")
+
     async def handle_resetkasa_command(self, update):
         """/resetkasa EVET onayi sonrasi kasayi sifirla."""
         try:
@@ -862,6 +924,8 @@ class TradingBot:
         receiver.watchlist_callback = self.handle_watchlist_command
         receiver.pozisyonlar_callback = self.handle_pozisyonlar_command
         receiver.reset_callback = self.handle_resetkasa_command
+        receiver.depth_callback = self.handle_depth_callback
+        receiver.cancel_callback = self.handle_cancel_callback
         app = receiver.build_app()
 
         async def post_init(application):
