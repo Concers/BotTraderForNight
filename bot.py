@@ -327,6 +327,35 @@ class TradingBot:
         # --- 4. RISK HESAPLAMA ---
         stop_info = self.risk.get_adaptive_stop_loss(df, current_price, side)
 
+        # RR (Risk/Reward) kontrolu: minimum 1:2
+        # Potansiyel reward = son 20 mumun direnc/destek seviyesine mesafe
+        try:
+            stop_distance = abs(current_price - stop_info["stop_price"])
+            if side == "BUY":
+                # LONG icin direnc: son 20 mumun en yuksegi
+                resistance = float(df["high"].tail(20).max())
+                potential_reward = resistance - current_price
+            else:
+                # SHORT icin destek: son 20 mumun en dusugu
+                support = float(df["low"].tail(20).min())
+                potential_reward = current_price - support
+
+            rr = potential_reward / stop_distance if stop_distance > 0 else 0
+            if rr < 2.0:
+                logger.warning(
+                    f"{symbol} RR YETERSIZ: {rr:.2f} < 2.0 "
+                    f"(stop_dist:{stop_distance:.6f}, reward:{potential_reward:.6f}). "
+                    f"{side} iptal."
+                )
+                self.journal.record_rejected(
+                    symbol, {"score": score.get("score", 0), "components": {}},
+                    f"RR {rr:.2f} < 2.0 (yetersiz reward)"
+                )
+                return
+            logger.info(f"{symbol} RR: {rr:.2f} (>= 2.0 OK)")
+        except Exception as e:
+            logger.debug(f"RR hesabi atlandi ({symbol}): {e}")
+
         # Bakiye: Binance'ten al, yoksa sabit bakiye kullan
         balance = self.binance.get_account_balance()
         if balance <= 0:
