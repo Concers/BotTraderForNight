@@ -124,6 +124,10 @@ class MarketScanner:
         self.btc_perf_24h = 0.0
         self.btc_rvol = 1.0  # BTC'nin son 3dk mumunun 20 mum avg'sine orani
         self.btc_rsi = 50.0
+        self.btc_funding = 0.0  # BTC anlik funding rate
+        self.btc_perf_4h = 0.0  # 4 saat performansi (sentiment icin)
+        self.btc_sentiment = "NOTR"  # STRONG_BULL, BULL, NOTR, BEAR, STRONG_BEAR
+        self.btc_sentiment_score = 0  # -3 ile +3
         self.market_mood = "NOTR"  # BULL, BEAR, NOTR
         self.scan_time = ""
         # Onceki taramadaki STRONG_BUY/STRONG_SELL coinleri hafizala (oncelik icin)
@@ -164,6 +168,12 @@ class MarketScanner:
             # BTC RSI (korelasyon filtresinde kullanilabilir)
             self.btc_rsi = float(btc_df["rsi"].iloc[-1]) if "rsi" in btc_df.columns else 50.0
 
+            # 4 saat performansi (sentiment icin)
+            if len(btc_closes) >= 80:
+                self.btc_perf_4h = (
+                    (btc_closes[-1] - btc_closes[-80]) / btc_closes[-80]
+                ) * 100
+
             if self.btc_perf_1h > 0.5:
                 self.market_mood = "BULL"
             elif self.btc_perf_1h < -0.5:
@@ -171,10 +181,43 @@ class MarketScanner:
             else:
                 self.market_mood = "NOTR"
 
-            logger.info(
-                f"BTC: Perf:%{self.btc_perf_1h:+.2f}/1h RVOL:x{self.btc_rvol:.2f} "
-                f"RSI:{self.btc_rsi:.0f} Mood:{self.market_mood}"
-            )
+        # BTC funding rate (sentiment icin)
+        self._funding_rates = self.binance.get_all_funding_rates()
+        self.btc_funding = self._funding_rates.get("BTCUSDT", 0.0)
+
+        # BTC SENTIMENT SKOR (-3 ile +3)
+        # Bilesenler: funding, 1h, 4h, 24h
+        sscore = 0
+        if self.btc_funding > 0.0001: sscore += 1
+        elif self.btc_funding < -0.0001: sscore -= 1
+        if self.btc_perf_1h > 0.3: sscore += 1
+        elif self.btc_perf_1h < -0.3: sscore -= 1
+        if self.btc_perf_4h > 1.0: sscore += 1
+        elif self.btc_perf_4h < -1.0: sscore -= 1
+        if self.btc_perf_24h > 3.0: sscore += 1
+        elif self.btc_perf_24h < -3.0: sscore -= 1
+
+        self.btc_sentiment_score = sscore
+        if sscore >= 3:
+            self.btc_sentiment = "STRONG_BULL"
+        elif sscore == 2:
+            self.btc_sentiment = "BULL"
+        elif sscore == 1:
+            self.btc_sentiment = "SLIGHT_BULL"
+        elif sscore == 0:
+            self.btc_sentiment = "NOTR"
+        elif sscore == -1:
+            self.btc_sentiment = "SLIGHT_BEAR"
+        elif sscore == -2:
+            self.btc_sentiment = "BEAR"
+        else:
+            self.btc_sentiment = "STRONG_BEAR"
+
+        logger.info(
+            f"BTC: 1h:%{self.btc_perf_1h:+.2f} 4h:%{self.btc_perf_4h:+.2f} "
+            f"24h:%{self.btc_perf_24h:+.2f} F:%{self.btc_funding*100:+.4f} "
+            f"-> Sentiment: {self.btc_sentiment} ({sscore:+d})"
+        )
 
         # 2. Tum ticker'lari al
         try:
@@ -183,8 +226,7 @@ class MarketScanner:
             logger.error(f"Ticker alinamadi: {e}")
             return {}
 
-        # 2b. Tum funding rate'leri bir kerede cek
-        self._funding_rates = self.binance.get_all_funding_rates()
+        # Funding rate cache yukarda dolduruldu (BTC sentiment icin)
         if self._funding_rates:
             logger.info(f"Funding rate: {len(self._funding_rates)} sembol yuklendi")
 
@@ -650,11 +692,19 @@ class MarketScanner:
             key=lambda x: x.short_score, reverse=True
         )[:10]
 
+        sent_emoji = {
+            "STRONG_BULL": "🟢🟢", "BULL": "🟢", "SLIGHT_BULL": "🔵",
+            "NOTR": "⚪", "SLIGHT_BEAR": "🟠",
+            "BEAR": "🔴", "STRONG_BEAR": "🔴🔴",
+        }.get(self.btc_sentiment, "⚪")
+
         lines = [
             f"🔬 <b>MARKET ADAYLARI</b> ({s['scan_time']})",
             f"━━━━━━━━━━━━━━━━━━",
             f"{mood_emoji} Piyasa: <b>{s['market_mood']}</b> | "
             f"₿ %{s['btc_1h']:+.2f}/1s",
+            f"{sent_emoji} BTC Sentiment: <b>{self.btc_sentiment}</b> "
+            f"({self.btc_sentiment_score:+d}) | F:%{self.btc_funding*100:+.4f}",
             f"📊 Taranan: {s['total']} coin | "
             f"⬆️ {len(top_longs)} LONG | ⬇️ {len(top_shorts)} SHORT",
             f"━━━━━━━━━━━━━━━━━━",

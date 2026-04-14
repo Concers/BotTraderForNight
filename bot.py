@@ -550,7 +550,28 @@ class TradingBot:
                 )
 
                 mood = summary.get("market_mood", "NOTR")
+                btc_sentiment = self.scanner.btc_sentiment
+
+                # AGGREGATE SENTIMENT GATE
+                # STRONG_BEAR/BEAR (skor <= -2): LONG yasak
+                # STRONG_BULL/BULL (skor >= 2): SHORT yasak
+                long_blocked = btc_sentiment in ("STRONG_BEAR", "BEAR")
+                short_blocked = btc_sentiment in ("STRONG_BULL", "BULL")
+                if long_blocked or short_blocked:
+                    blocked = []
+                    if long_blocked: blocked.append("LONG")
+                    if short_blocked: blocked.append("SHORT")
+                    logger.info(
+                        f"SENTIMENT GATE: {btc_sentiment} -> "
+                        f"{','.join(blocked)} yasak (akintiya karsi gitme)"
+                    )
+
                 for side, coin, score in candidates:
+                    # Sentiment gate kontrolu
+                    if side == "BUY" and long_blocked:
+                        continue
+                    if side == "SELL" and short_blocked:
+                        continue
                     # Her iterasyon basinda limit kontrol (process_signal icinde de var)
                     if not self.risk.can_open_trade():
                         logger.info(
