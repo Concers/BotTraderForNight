@@ -166,6 +166,68 @@ class TradingBot:
 
         df = run_all_indicators(df)
 
+        # --- PRE-ENTRY: Multi-TF RSI divergence + slope kontrolu ---
+        # 5m RSI vs 1m RSI farki > 15 = momentum kaybi (sahte pump)
+        # 1m RSI slope < 0 (LONG icin) veya > 0 (SHORT icin) = yorgun giris
+        try:
+            from indicators import rsi_slope
+            df_5m = self.binance.get_klines(symbol, interval="5m", limit=50)
+            df_1m = self.binance.get_klines(symbol, interval="1m", limit=50)
+            if not df_5m.empty and not df_1m.empty:
+                df_5m = run_all_indicators(df_5m)
+                df_1m = run_all_indicators(df_1m)
+                rsi_5m = float(df_5m["rsi"].iloc[-1])
+                rsi_1m = float(df_1m["rsi"].iloc[-1])
+                slope_1m = rsi_slope(df_1m, 3)
+
+                if side == "BUY":
+                    # LONG icin: 5m guclu ama 1m cok dusukse = fake pump
+                    if rsi_5m - rsi_1m > 15:
+                        logger.warning(
+                            f"{symbol} MOMENTUM DIVERGENCE: 5m:{rsi_5m:.0f} vs "
+                            f"1m:{rsi_1m:.0f} (fark {rsi_5m-rsi_1m:.0f}). LONG iptal."
+                        )
+                        self.journal.record_rejected(
+                            symbol, {"score": 0, "components": {}},
+                            f"DIVERGENCE: 5m-1m RSI fark {rsi_5m-rsi_1m:.0f}"
+                        )
+                        return
+                    # 1m RSI slope negatifse = giris yorgun
+                    if slope_1m < -2:
+                        logger.warning(
+                            f"{symbol} RSI SLOPE ZAYIF: 1m slope:{slope_1m:.1f}. "
+                            f"LONG iptal."
+                        )
+                        self.journal.record_rejected(
+                            symbol, {"score": 0, "components": {}},
+                            f"1m RSI slope {slope_1m:.1f} negatif"
+                        )
+                        return
+                else:  # SELL
+                    # SHORT icin ters: 5m dusuk ama 1m yuksekse = bounce riski
+                    if rsi_1m - rsi_5m > 15:
+                        logger.warning(
+                            f"{symbol} MOMENTUM DIVERGENCE: 5m:{rsi_5m:.0f} vs "
+                            f"1m:{rsi_1m:.0f} (bounce riski). SHORT iptal."
+                        )
+                        self.journal.record_rejected(
+                            symbol, {"score": 0, "components": {}},
+                            f"DIVERGENCE: 1m-5m RSI fark {rsi_1m-rsi_5m:.0f}"
+                        )
+                        return
+                    if slope_1m > 2:
+                        logger.warning(
+                            f"{symbol} RSI SLOPE POZITIF: 1m slope:{slope_1m:.1f} "
+                            f"(bounce). SHORT iptal."
+                        )
+                        self.journal.record_rejected(
+                            symbol, {"score": 0, "components": {}},
+                            f"1m RSI slope {slope_1m:.1f} pozitif (SHORT'a ters)"
+                        )
+                        return
+        except Exception as e:
+            logger.debug(f"Multi-TF RSI kontrolu atlandi ({symbol}): {e}")
+
         # BTC verisi
         btc_df = self.binance.get_klines("BTCUSDT", interval="3m", limit=200)
         if not btc_df.empty:

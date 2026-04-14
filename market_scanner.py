@@ -16,7 +16,7 @@ import time
 from datetime import datetime
 from logger_setup import setup_logger
 from binance_client import BinanceClient
-from indicators import run_all_indicators
+from indicators import run_all_indicators, rsi_slope
 from scoring import CANSLIMScorer
 from short_strategy import analyze_short_setup
 from long_strategy import analyze_long_setup
@@ -62,6 +62,15 @@ class CoinProfile:
         self.funding_rate = data.get("funding_rate", 0.0)
         # Onceki taramada STRONG_BUY ise "long", STRONG_SELL ise "short", yoksa None
         self.previously_tracked = data.get("previously_tracked", None)
+        # Coklu TF RSI - 5m RSI mevcut "rsi" (3m mumdan), 1m/3m ayri
+        self.rsi_5m = data.get("rsi_5m", 50.0)
+        self.rsi_3m = data.get("rsi_3m", 50.0)
+        self.rsi_1m = data.get("rsi_1m", 50.0)
+        # RSI egimi (son 3 bar) - negatif: momentum kaybi
+        self.rsi_slope_3m = data.get("rsi_slope_3m", 0.0)
+        self.rsi_slope_1m = data.get("rsi_slope_1m", 0.0)
+        # Divergence flag: rsi_5m - rsi_1m > 15 ise True (sahte pump)
+        self.momentum_divergence = data.get("momentum_divergence", False)
 
 
 class MarketScanner:
@@ -294,6 +303,8 @@ class MarketScanner:
             "long_signals": long_setup["signals"],
             "long_setup": long_setup,
             "funding_rate": self._funding_rates.get(symbol, 0.0),
+            # 3m RSI egimi (son 3 bar) - negatif: momentum zayifliyor
+            "rsi_slope_3m": round(rsi_slope(df, 3), 2),
             "previously_tracked": (
                 "long" if symbol in self._prev_strong_buy
                 else "short" if symbol in self._prev_strong_sell
@@ -486,10 +497,13 @@ class MarketScanner:
             for c in top_longs:
                 coin = c.symbol.replace("USDT", "")
                 tracked_tag = "🔄" if c.previously_tracked == "long" else ""
+                # Momentum zayifliyor uyarisi (RSI egimi negatif)
+                decay_tag = "⚠️" if c.rsi_slope_3m < -3 else ""
                 f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {tracked_tag}{coin:8s} LongS:{c.long_score} {c.long_verdict} "
-                    f"RSI:{c.rsi:.0f} RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
+                    f"  {tracked_tag}{decay_tag}{coin:8s} LongS:{c.long_score} {c.long_verdict} "
+                    f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) RS:{c.relative_strength:+.1f} "
+                    f"F:%{f_pct:+.3f}"
                 )
 
         top_shorts = sorted(
@@ -501,10 +515,13 @@ class MarketScanner:
             for c in top_shorts:
                 coin = c.symbol.replace("USDT", "")
                 tracked_tag = "🔄" if c.previously_tracked == "short" else ""
+                # Momentum bounce riski uyarisi (SHORT icin: egim POZITIF = bounce)
+                decay_tag = "⚠️" if c.rsi_slope_3m > 3 else ""
                 f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {tracked_tag}{coin:8s} ShortS:{c.short_score} {c.short_verdict} "
-                    f"RSI:{c.rsi:.0f} RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
+                    f"  {tracked_tag}{decay_tag}{coin:8s} ShortS:{c.short_score} {c.short_verdict} "
+                    f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) RS:{c.relative_strength:+.1f} "
+                    f"F:%{f_pct:+.3f}"
                 )
 
         # Ozet
