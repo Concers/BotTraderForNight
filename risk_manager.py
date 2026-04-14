@@ -13,6 +13,16 @@ ACTIVE_TRADES_FILE = os.path.join(
     os.path.dirname(__file__), "data", "active_trades.json"
 )
 
+# ==================== STOP-LOSS KONFIG ====================
+# ATR x MULTIPLIER = stop mesafesi. Yuksek volatilite icin gevsetilir.
+# v2.1 DERS: 1.5x cok yakin (20x'te anlik tetikleniyor), 3.5x+ uygun.
+ATR_MULTIPLIER_LOW_VOL = 3.5   # Volatilite <= %1.0
+ATR_MULTIPLIER_HIGH_VOL = 4.0  # Volatilite > %1.0
+MIN_STOP_DISTANCE_PCT = 0.025  # Minimum %2.5 mesafe (20x koruma)
+STRUCTURAL_BUFFER = 0.005      # Yapisal stop: son 10 mum dip/tepe +-%0.5
+STRUCTURAL_LOOKBACK = 10       # Kac mum geriye bakilsin
+# ==========================================================
+
 
 class ActiveTrade:
     """
@@ -143,39 +153,58 @@ class RiskManager:
 
     def get_adaptive_stop_loss(self, df: pd.DataFrame, entry_price: float,
                                 side: str) -> dict:
-        """v2.1 Adaptive Stop - daha genis ama yapisal."""
-        atr = df["atr"].iloc[-1]
+        """
+        ATR-based Adaptive Stop (v2.1).
+
+        Mantik:
+          1. ATR x multiplier (vol >%1 -> 4.0x, degilse 3.5x)
+          2. Minimum %2.5 mesafe zorunlu (20x koruma)
+          3. Yapisal stop: son 10 mumun dip/tepe +/- %0.5
+          4. ATR stop ve yapisal stop'tan DAHA GENIS olani kullanilir
+        """
+        atr = float(df["atr"].iloc[-1])
         volatility_pct = (atr / entry_price) * 100
 
-        multiplier = 4.0 if volatility_pct > 1.0 else 3.5
+        # ATR bazli mesafe
+        multiplier = (ATR_MULTIPLIER_HIGH_VOL if volatility_pct > 1.0
+                      else ATR_MULTIPLIER_LOW_VOL)
         atr_stop_dist = atr * multiplier
 
-        # Minimum %2.5 mesafe
-        min_stop_dist = entry_price * 0.025
-        atr_stop_dist = max(atr_stop_dist, min_stop_dist)
+        # Minimum mesafe zorunlulugu
+        min_stop_dist = entry_price * MIN_STOP_DISTANCE_PCT
+        if atr_stop_dist < min_stop_dist:
+            atr_stop_dist = min_stop_dist
 
+        # Yapisal stop (son N mumun dip/tepe +/- buffer)
         if side == "BUY":
-            recent_low = df["low"].tail(10).min()
-            structural_stop = recent_low * 0.995
-            final_stop = min(entry_price - atr_stop_dist, structural_stop)
+            recent_low = float(df["low"].tail(STRUCTURAL_LOOKBACK).min())
+            structural_stop = recent_low * (1 - STRUCTURAL_BUFFER)
+            atr_based_stop = entry_price - atr_stop_dist
+            final_stop = min(atr_based_stop, structural_stop)
         else:
-            recent_high = df["high"].tail(10).max()
-            structural_stop = recent_high * 1.005
-            final_stop = max(entry_price + atr_stop_dist, structural_stop)
+            recent_high = float(df["high"].tail(STRUCTURAL_LOOKBACK).max())
+            structural_stop = recent_high * (1 + STRUCTURAL_BUFFER)
+            atr_based_stop = entry_price + atr_stop_dist
+            final_stop = max(atr_based_stop, structural_stop)
 
-        # Zaman: zararda 180dk, karda sinirsiz
-        time_limit = 180
+        # Toplam stop mesafesi yuzdesi
+        stop_distance_pct = abs(entry_price - final_stop) / entry_price * 100
+
+        time_limit = 180  # Zaman: zararda 180dk, karda sinirsiz
 
         result = {
             "stop_price": round(final_stop, 6),
             "time_limit_min": time_limit,
             "volatility_pct": round(volatility_pct, 2),
             "multiplier": multiplier,
+            "atr": round(atr, 6),
+            "stop_distance_pct": round(stop_distance_pct, 2),
         }
 
         logger.info(
-            f"Stop-Loss | Vol: %{result['volatility_pct']} | "
-            f"x{multiplier} | Stop: {result['stop_price']}"
+            f"Stop-Loss | ATR:{atr:.6f} Vol:%{result['volatility_pct']} "
+            f"x{multiplier} | Stop:{result['stop_price']} "
+            f"(mesafe %{result['stop_distance_pct']})"
         )
         return result
 
