@@ -407,95 +407,93 @@ class TradingBot:
                 await self.scanner.scan()
                 summary = self.scanner.get_summary()
 
-                # LONG SIGNAL - Oncelik: STRONG_BUY > BUY > NOTR,
-                # sonra previously_tracked, sonra RVOL, sonra long_score
+                # Market Rontgeni'ndeki LONG ADAYLARI + SHORT ADAYLARI
+                # Sadece raporda listelenenler (long_score >= 60 VEYA short_score >= 60)
+                # Birlesik aday listesi skora gore sort, max 7 acilir.
                 from long_strategy import should_open_long
-                long_candidates = (
-                    summary.get("strong_buy", [])
-                    + summary.get("buy", [])
-                    + summary.get("notr", [])
+                from short_strategy import should_open_short
+                all_coins = (
+                    summary.get("strong_buy", []) + summary.get("buy", [])
+                    + summary.get("notr", []) + summary.get("sell", [])
+                    + summary.get("strong_sell", [])
                 )
 
-                def _long_priority(c):
-                    cat_rank = (0 if c.category == "STRONG_BUY"
-                                else 1 if c.category == "BUY" else 2)
-                    tracked_rank = 0 if c.previously_tracked == "long" else 1
-                    return (cat_rank, tracked_rank, -c.rvol, -c.long_score)
-
-                long_candidates.sort(key=_long_priority)
-
-                for coin in long_candidates:
-                    if coin.rsi >= 99 or coin.long_score < 55:
+                candidates = []  # (side, coin, score)
+                for c in all_coins:
+                    if c.rsi >= 99:
                         continue
-                    # RVOL min filtresi: hacimsiz yukselis = boga tuzagi riski
+                    if c.long_score >= 60:
+                        candidates.append(("BUY", c, c.long_score))
+                    if c.short_score >= 60:
+                        candidates.append(("SELL", c, c.short_score))
+
+                # Siralama: tracked once, sonra skor, sonra RVOL
+                def _priority(item):
+                    side, c, score = item
+                    tracked = (
+                        0 if (side == "BUY" and c.previously_tracked == "long")
+                        or (side == "SELL" and c.previously_tracked == "short")
+                        else 1
+                    )
+                    return (tracked, -score, -c.rvol)
+
+                candidates.sort(key=_priority)
+                logger.info(
+                    f"ADAYLAR: {len(candidates)} (LONG+SHORT birlesik, skora gore)"
+                )
+
+                mood = summary.get("market_mood", "NOTR")
+                for side, coin, score in candidates:
+                    # Her iterasyon basinda limit kontrol (process_signal icinde de var)
+                    if not self.risk.can_open_trade():
+                        logger.info(
+                            f"Islem limiti ({len(self.risk.active_trades)}/7) "
+                            f"doldu, tarama durdu"
+                        )
+                        break
+
+                    # RVOL min filtresi
                     if coin.rvol < 1.2:
                         logger.info(
-                            f"LONG atlandi ({coin.symbol}): RVOL {coin.rvol:.2f} "
-                            f"< 1.2 (hacimsiz yukselis)"
+                            f"{side} atlandi ({coin.symbol}): RVOL {coin.rvol:.2f}"
+                            f" < 1.2 (hacimsiz hareket)"
                         )
                         continue
-                    # Funding kontrarian filtresi: >%0.1 = LONG pahalli, atla
-                    if coin.funding_rate > 0.001:
+
+                    # Funding kontrarian filtresi
+                    if side == "BUY" and coin.funding_rate > 0.001:
                         logger.info(
                             f"LONG atlandi ({coin.symbol}): funding "
                             f"%{coin.funding_rate*100:.3f} cok yuksek"
                         )
                         continue
-                    setup = {"score": coin.long_score}
-                    if not should_open_long(setup, summary.get("market_mood", "NOTR")):
-                        continue
-                    tracked_tag = " [TRACKED]" if coin.previously_tracked == "long" else ""
-                    logger.info(
-                        f"LONG SIGNAL: {coin.symbol}{tracked_tag} | "
-                        f"Cat:{coin.category} RVOL:{coin.rvol} "
-                        f"LongScore:{coin.long_score} F:%{coin.funding_rate*100:.3f}"
-                    )
-                    await self.process_signal("BUY", coin.symbol, coin_profile=coin)
-
-                # SHORT SIGNAL - Oncelik: STRONG_SELL > SELL > NOTR,
-                # sonra previously_tracked, sonra RVOL, sonra short_score
-                from short_strategy import should_open_short
-                short_candidates = (
-                    summary.get("strong_sell", [])
-                    + summary.get("sell", [])
-                    + summary.get("notr", [])
-                )
-
-                def _short_priority(c):
-                    cat_rank = (0 if c.category == "STRONG_SELL"
-                                else 1 if c.category == "SELL" else 2)
-                    tracked_rank = 0 if c.previously_tracked == "short" else 1
-                    return (cat_rank, tracked_rank, -c.rvol, -c.short_score)
-
-                short_candidates.sort(key=_short_priority)
-
-                for coin in short_candidates:
-                    if coin.rsi >= 99 or coin.short_score < 55:
-                        continue
-                    # RVOL min filtresi: hacimsiz dusus = sessizlik, zayif sinyal
-                    if coin.rvol < 1.2:
-                        logger.info(
-                            f"SHORT atlandi ({coin.symbol}): RVOL {coin.rvol:.2f} "
-                            f"< 1.2 (hacimsiz dusus)"
-                        )
-                        continue
-                    # Funding kontrarian filtresi: <-%0.1 = SHORT pahalli, atla
-                    if coin.funding_rate < -0.001:
+                    if side == "SELL" and coin.funding_rate < -0.001:
                         logger.info(
                             f"SHORT atlandi ({coin.symbol}): funding "
                             f"%{coin.funding_rate*100:.3f} cok dusuk"
                         )
                         continue
-                    setup = {"score": coin.short_score}
-                    if not should_open_short(setup, summary.get("market_mood", "NOTR")):
+
+                    # Mood-aware esik
+                    setup = {"score": score}
+                    if side == "BUY" and not should_open_long(setup, mood):
                         continue
-                    tracked_tag = " [TRACKED]" if coin.previously_tracked == "short" else ""
+                    if side == "SELL" and not should_open_short(setup, mood):
+                        continue
+
+                    tracked_tag = ""
+                    if side == "BUY" and coin.previously_tracked == "long":
+                        tracked_tag = " [TRACKED]"
+                    elif side == "SELL" and coin.previously_tracked == "short":
+                        tracked_tag = " [TRACKED]"
+
+                    score_label = "LongS" if side == "BUY" else "ShortS"
                     logger.info(
-                        f"SHORT SIGNAL: {coin.symbol}{tracked_tag} | "
+                        f"{side} SIGNAL: {coin.symbol}{tracked_tag} | "
                         f"Cat:{coin.category} RVOL:{coin.rvol} "
-                        f"ShortScore:{coin.short_score} F:%{coin.funding_rate*100:.3f}"
+                        f"{score_label}:{score} F:%{coin.funding_rate*100:.3f}"
                     )
-                    await self.process_signal("SELL", coin.symbol, coin_profile=coin)
+                    await self.process_signal(side, coin.symbol, coin_profile=coin)
 
                 # Telegram rapor
                 report = self.scanner.generate_telegram_report()
