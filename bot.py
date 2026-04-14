@@ -525,13 +525,17 @@ class TradingBot:
                     + summary.get("strong_sell", [])
                 )
 
+                # MIN SKOR 70 (sadece guclu adaylar) + TOP 5 ranking
+                MIN_SCORE = 70
+                MAX_NEW_TRADES_PER_SCAN = 5
+
                 candidates = []  # (side, coin, score)
                 for c in all_coins:
                     if c.rsi >= 99:
                         continue
-                    if c.long_score >= 60:
+                    if c.long_score >= MIN_SCORE:
                         candidates.append(("BUY", c, c.long_score))
-                    if c.short_score >= 60:
+                    if c.short_score >= MIN_SCORE:
                         candidates.append(("SELL", c, c.short_score))
 
                 # Siralama: tracked once, sonra skor, sonra RVOL
@@ -545,8 +549,11 @@ class TradingBot:
                     return (tracked, -score, -c.rvol)
 
                 candidates.sort(key=_priority)
+                # Top 5 ile sinirla
+                candidates = candidates[:MAX_NEW_TRADES_PER_SCAN]
                 logger.info(
-                    f"ADAYLAR: {len(candidates)} (LONG+SHORT birlesik, skora gore)"
+                    f"ADAYLAR (top {MAX_NEW_TRADES_PER_SCAN}): {len(candidates)} "
+                    f"(min skor {MIN_SCORE}, LONG+SHORT birlesik)"
                 )
 
                 mood = summary.get("market_mood", "NOTR")
