@@ -108,6 +108,33 @@ def calculate_trend_slope(df: pd.DataFrame, length: int = 10) -> pd.DataFrame:
     return df
 
 
+def rsi_slope(df: pd.DataFrame, lookback: int = 3) -> float:
+    """
+    Son N barin RSI egimi (linear regression slope).
+
+    Kullanim: `rsi_slope(df, 3)` -> son 3 barin RSI'i dusuyor mu?
+      Negatif: RSI zayifliyor (momentum kaybi)
+      Pozitif: RSI guncleniyor
+      ~0: yatay
+
+    Returns: birim bar basina RSI puan degisimi (orn. -2.5 = bar basi 2.5 puan dusuyor)
+    """
+    if df is None or df.empty or "rsi" not in df.columns or len(df) < lookback:
+        return 0.0
+    try:
+        y = df["rsi"].tail(lookback).values
+        if np.isnan(y).any():
+            return 0.0
+        x = np.arange(len(y))
+        # polyfit(x, y, 1) -> [slope, intercept]
+        slope = float(np.polyfit(x, y, 1)[0])
+        if np.isnan(slope) or np.isinf(slope):
+            return 0.0
+        return slope
+    except Exception:
+        return 0.0
+
+
 def sanitize(df: pd.DataFrame) -> pd.DataFrame:
     """NaN/Inf degerlerini temizle."""
     df["rsi"] = df["rsi"].fillna(50).clip(0, 100)
