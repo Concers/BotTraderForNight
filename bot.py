@@ -12,7 +12,8 @@ BotTraderForNight - Ana Bot Dongusu
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+from time_utils import tr_now, parse_iso_tr, TR_TZ
 from logger_setup import setup_logger
 from binance_client import BinanceClient
 from telegram_bot import TelegramNotifier, TelegramSignalReceiver
@@ -347,8 +348,8 @@ class TradingBot:
                 await asyncio.sleep(5)
 
     async def periodic_report(self):
-        """Her 1 saatte PDF rapor olustur ve Telegram'a gonder."""
-        await asyncio.sleep(60)  # Ilk rapor 1dk sonra
+        """Her 1 saatte: saatlik metin + 24h analiz + PDF rapor."""
+        await asyncio.sleep(60)
         while self._monitoring:
             try:
                 w = self.wallet
@@ -357,19 +358,118 @@ class TradingBot:
                 kasa_pnl_pct = ((w.total_balance - w.data['initial_balance'])
                                 / w.data['initial_balance']) * 100
 
-                # Kisa Telegram bildirimi (PDF oncesi)
-                await self.notifier.send_message(
-                    f"📄 <b>SAATLIK RAPOR</b> ({datetime.now().strftime('%H:%M')})\n"
-                    f"━━━━━━━━━━━━━━━━━━\n"
+                # Saat araligi: son 1 saat (TR)
+                now = tr_now()
+                start = now - timedelta(hours=1)
+                periyot = (
+                    f"{start.strftime('%H:%M')} - {now.strftime('%H:%M')}"
+                )
+
+                # --- SON 1 SAAT analizi (journal trades) ---
+                trades = self.journal.data.get("trades", [])
+                hour_open: list[dict] = []
+                hour_close: list[dict] = []
+                day_open: list[dict] = []
+                day_close: list[dict] = []
+                day_start = now - timedelta(hours=24)
+
+                for t in trades:
+                    try:
+                        ot = parse_iso_tr(t.get("open_time"))
+                        ct = parse_iso_tr(t.get("close_time")) if t.get("close_time") else None
+                        if ot and start <= ot <= now:
+                            hour_open.append(t)
+                        if ot and day_start <= ot <= now:
+                            day_open.append(t)
+                        if ct and start <= ct <= now:
+                            hour_close.append(t)
+                        if ct and day_start <= ct <= now:
+                            day_close.append(t)
+                    except Exception:
+                        continue
+
+                hour_pnl = sum(t.get("pnl") or 0 for t in hour_close)
+                day_pnl = sum(t.get("pnl") or 0 for t in day_close)
+                day_wins = sum(1 for t in day_close if (t.get("pnl") or 0) > 0)
+                day_losses = sum(1 for t in day_close if (t.get("pnl") or 0) <= 0)
+                day_win_rate = (
+                    (day_wins / len(day_close) * 100) if day_close else 0
+                )
+
+                # En karli/zararli kapanan (24h)
+                top_win = max(day_close, key=lambda x: x.get("pnl") or 0,
+                              default=None) if day_close else None
+                top_loss = min(day_close, key=lambda x: x.get("pnl") or 0,
+                               default=None) if day_close else None
+
+                # Saatlik ozet mesaji
+                msg_lines = [
+                    f"📄 <b>SAATLIK RAPOR</b> ({periyot}) TR",
+                    f"━━━━━━━━━━━━━━━━━━",
                     f"💼 KASA: <b>${w.total_balance:.2f}</b> "
-                    f"(${w.data['total_pnl']:+.2f} | %{kasa_pnl_pct:+.1f})\n"
-                    f"💵 Kullanilabilir: ${w.available_balance:.2f}\n"
-                    f"📂 Acik: {open_count} | Kapanan: {s.get('closed', 0)}\n"
-                    f"🎯 Win Rate: %{s['win_rate']:.0f} "
-                    f"({w.data['wins']}W/{w.data['losses']}L)\n"
-                    f"━━━━━━━━━━━━━━━━━━\n"
-                    f"PDF rapor hazirlaniyor...",
-                    category="rapor",
+                    f"(${w.data['total_pnl']:+.2f} | %{kasa_pnl_pct:+.1f})",
+                    f"💵 Kullanilabilir: ${w.available_balance:.2f}",
+                    f"📂 Acik: {open_count} | Toplam islem: {s['total_trades']}",
+                    f"━━━━━━━━━━━━━━━━━━",
+                    f"⏱ <b>SON 1 SAAT</b>",
+                    f"  🆕 Acilan: {len(hour_open)} | "
+                    f"❎ Kapanan: {len(hour_close)}",
+                    f"  💰 PnL: <b>${hour_pnl:+.2f}</b>",
+                ]
+
+                if hour_open:
+                    msg_lines.append(
+                        "  Acilanlar: " + ", ".join(
+                            t["symbol"].replace("USDT", "")
+                            for t in hour_open[:8]
+                        )
+                    )
+                if hour_close:
+                    msg_lines.append(
+                        "  Kapananlar: " + ", ".join(
+                            f"{t['symbol'].replace('USDT','')}({(t.get('pnl') or 0):+.1f})"
+                            for t in hour_close[:8]
+                        )
+                    )
+
+                msg_lines.append(f"━━━━━━━━━━━━━━━━━━")
+                msg_lines.append(f"📅 <b>SON 24 SAAT</b>")
+                msg_lines.append(
+                    f"  🆕 Acilan: {len(day_open)} | "
+                    f"❎ Kapanan: {len(day_close)}"
+                )
+                msg_lines.append(
+                    f"  💰 PnL: <b>${day_pnl:+.2f}</b> | "
+                    f"WinRate: %{day_win_rate:.0f} "
+                    f"({day_wins}W/{day_losses}L)"
+                )
+
+                if top_win and (top_win.get("pnl") or 0) > 0:
+                    coin = top_win["symbol"].replace("USDT", "")
+                    msg_lines.append(
+                        f"  🏆 En karli: <b>{coin}</b> "
+                        f"${top_win['pnl']:+.2f} "
+                        f"(%{top_win.get('pnl_pct') or 0:+.1f})"
+                    )
+                if top_loss and (top_loss.get("pnl") or 0) < 0:
+                    coin = top_loss["symbol"].replace("USDT", "")
+                    msg_lines.append(
+                        f"  💀 En zararli: <b>{coin}</b> "
+                        f"${top_loss['pnl']:+.2f} "
+                        f"(%{top_loss.get('pnl_pct') or 0:+.1f})"
+                    )
+
+                # 24h hic islem yoksa not
+                if not day_open and not day_close:
+                    msg_lines.append(
+                        "  ⚠️ Son 24 saatte islem acilmadi/kapanmadi"
+                    )
+
+                msg_lines.append(f"━━━━━━━━━━━━━━━━━━")
+                msg_lines.append("📎 PDF rapor hazirlaniyor...")
+
+                await self.notifier.send_message(
+                    "\n".join(msg_lines), category="rapor"
                 )
 
                 # PDF olustur ve gonder
@@ -377,7 +477,7 @@ class TradingBot:
                     pdf_path = generate_pdf_report()
                     await self.notifier.send_document(
                         pdf_path,
-                        f"Saatlik Rapor - {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+                        f"Saatlik Rapor - {now.strftime('%d.%m.%Y %H:%M')} TR"
                     )
                 except Exception as pdf_err:
                     logger.error(f"PDF olusturma hatasi: {pdf_err}")
@@ -388,7 +488,8 @@ class TradingBot:
             except Exception as e:
                 logger.error(f"Periyodik rapor hatasi: {e}")
 
-            await asyncio.sleep(3600)  # 1 saat
+            await asyncio.sleep(3600)
+
 
     async def market_scanner_loop(self):
         """

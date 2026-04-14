@@ -13,6 +13,7 @@ Kurallar:
 import json
 import os
 from datetime import datetime
+from time_utils import tr_now_iso, tr_now_str
 from logger_setup import setup_logger
 
 logger = setup_logger("Wallet")
@@ -47,13 +48,13 @@ class Wallet:
                 "wins": 0,
                 "losses": 0,
                 "history": [],
-                "created": datetime.now().isoformat(),
-                "last_updated": datetime.now().isoformat(),
+                "created": tr_now_iso(),
+                "last_updated": tr_now_iso(),
             }
             self._save()
 
     def _save(self):
-        self.data["last_updated"] = datetime.now().isoformat()
+        self.data["last_updated"] = tr_now_iso()
         with open(WALLET_FILE, "w") as f:
             json.dump(self.data, f, indent=2, default=str)
 
@@ -85,7 +86,7 @@ class Wallet:
         self.data["reserved"] += MARGIN_PER_TRADE
 
         self.data["history"].append({
-            "time": datetime.now().isoformat(),
+            "time": tr_now_iso(),
             "type": "OPEN",
             "symbol": symbol,
             "side": side,
@@ -131,7 +132,7 @@ class Wallet:
             self.data["losses"] += 1
 
         self.data["history"].append({
-            "time": datetime.now().isoformat(),
+            "time": tr_now_iso(),
             "type": "CLOSE",
             "symbol": symbol,
             "side": side,
@@ -187,8 +188,8 @@ class Wallet:
             "wins": 0,
             "losses": 0,
             "history": [],
-            "created": datetime.now().isoformat(),
-            "last_updated": datetime.now().isoformat(),
+            "created": tr_now_iso(),
+            "last_updated": tr_now_iso(),
         }
         self._save()
         logger.info(f"KASA SIFIRLANDI: ${new_balance:.2f}")

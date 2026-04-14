@@ -8,6 +8,7 @@ import json
 import os
 import time
 from datetime import datetime
+from time_utils import tr_now_iso, tr_now_str
 from logger_setup import setup_logger
 
 logger = setup_logger("Journal")
@@ -72,7 +73,7 @@ class TradeJournal:
             "score": score.get("score", 0),
             "components": score.get("components", {}),
             "decision": score.get("decision", ""),
-            "open_time": datetime.now().isoformat(),
+            "open_time": tr_now_iso(),
             "close_time": None,
             "close_price": None,
             "pnl": None,
@@ -89,7 +90,7 @@ class TradeJournal:
         """Islem kapatildiginda guncelle."""
         for trade in reversed(self.data["trades"]):
             if trade["symbol"] == symbol and trade["status"] == "OPEN":
-                trade["close_time"] = datetime.now().isoformat()
+                trade["close_time"] = tr_now_iso()
                 trade["close_price"] = close_price
                 trade["close_reason"] = reason
                 trade["status"] = "CLOSED"
@@ -119,7 +120,7 @@ class TradeJournal:
         """Reddedilen sinyali kaydet."""
         entry = {
             "symbol": symbol,
-            "time": datetime.now().isoformat(),
+            "time": tr_now_iso(),
             "score": score.get("score", 0),
             "components": score.get("components", {}),
             "reason": reason,
@@ -133,7 +134,7 @@ class TradeJournal:
     def record_scan(self, total_coins: int, signals: int, duration_sec: float):
         """Tarama sonucunu kaydet."""
         entry = {
-            "time": datetime.now().isoformat(),
+            "time": tr_now_iso(),
             "total_coins": total_coins,
             "signals": signals,
             "duration_sec": round(duration_sec, 1),
@@ -201,7 +202,7 @@ class CoinLists:
         s = self.data["stats"][symbol]
         s["trades"] += 1
         s["total_pnl"] = round(s["total_pnl"] + pnl, 2)
-        s["last_trade"] = datetime.now().isoformat()
+        s["last_trade"] = tr_now_iso()
 
         if pnl > 0:
             s["wins"] += 1
@@ -213,7 +214,7 @@ class CoinLists:
         if s["trades"] >= 3 and (s["wins"] / s["trades"]) >= 0.7:
             self.data["whitelist"][symbol] = {
                 "reason": f"Win rate: {s['wins']}/{s['trades']} | PnL: ${s['total_pnl']}",
-                "added": datetime.now().isoformat(),
+                "added": tr_now_iso(),
             }
             # Blacklist'teyse cikar
             self.data["blacklist"].pop(symbol, None)
@@ -223,7 +224,7 @@ class CoinLists:
         if s["trades"] >= 3 and (s["losses"] / s["trades"]) >= 0.7:
             self.data["blacklist"][symbol] = {
                 "reason": f"Loss rate: {s['losses']}/{s['trades']} | PnL: ${s['total_pnl']}",
-                "added": datetime.now().isoformat(),
+                "added": tr_now_iso(),
             }
             self.data["whitelist"].pop(symbol, None)
             logger.info(f"BLACKLIST: {symbol} eklendi ({s['losses']}/{s['trades']} loss)")

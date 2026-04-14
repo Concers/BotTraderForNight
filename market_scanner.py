@@ -14,6 +14,7 @@ Sonuc: Telegram'a "Market Roentgeni" paneli gonderir.
 
 import time
 from datetime import datetime
+from time_utils import tr_now_iso, tr_now_str
 from logger_setup import setup_logger
 from binance_client import BinanceClient
 from indicators import run_all_indicators, rsi_slope
@@ -136,7 +137,7 @@ class MarketScanner:
     async def scan(self) -> dict:
         """Tam market taramasi yap."""
         start = time.time()
-        self.scan_time = datetime.now().strftime("%H:%M")
+        self.scan_time = tr_now_str("%H:%M")
         self.results = []
 
         logger.info("Market Scanner v2 baslatildi...")
@@ -556,7 +557,7 @@ class MarketScanner:
 
         lines = [
             f"📊 <b>FUNDING RATE TARAMASI</b>",
-            f"<i>{datetime.now().strftime('%Y-%m-%d %H:%M')} · UTC+3</i>",
+            f"<i>{tr_now_str('%Y-%m-%d %H:%M')} · UTC+3</i>",
             f"<i>Sadece market adaylari ({len(candidates_with_funding)} coin)</i>",
             f"━━━━━━━━━━━━━━━━━━",
         ]
@@ -798,7 +799,7 @@ class MarketScanner:
         watchlist.setdefault("blacklist", {})
         watchlist.setdefault("history", {})
 
-        now = datetime.now().isoformat()
+        now = tr_now_iso()
 
         for r in self.results:
             sym = r.symbol
