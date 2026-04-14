@@ -198,7 +198,8 @@ class MarketScanner:
             price = float(t.get("lastPrice", 0))
             change_24h = float(t.get("priceChangePercent", 0))
 
-            if price > 0 and 500_000 <= vol <= 50_000_000:
+            # Likidite filtresi: min 10M$ 24h hacim (slippage + manipulasyon koruma)
+            if price > 0 and 10_000_000 <= vol <= 200_000_000:
                 candidates.append({
                     "symbol": sym,
                     "price": price,

@@ -559,11 +559,11 @@ class TradingBot:
                         )
                         break
 
-                    # RVOL min filtresi
-                    if coin.rvol < 1.2:
+                    # RVOL min filtresi (1.5x - gercek hacim sarti)
+                    if coin.rvol < 1.5:
                         logger.info(
                             f"{side} atlandi ({coin.symbol}): RVOL {coin.rvol:.2f}"
-                            f" < 1.2 (hacimsiz hareket)"
+                            f" < 1.5 (hacim yetersiz)"
                         )
                         continue
 
