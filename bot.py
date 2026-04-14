@@ -248,11 +248,14 @@ class TradingBot:
             if coin_profile is not None and coin_profile.long_setup:
                 setup = coin_profile.long_setup
             else:
+                fr = (coin_profile.funding_rate
+                      if coin_profile else self.binance.get_funding_rate(symbol))
                 setup = analyze_long_setup(
                     df,
                     btc_perf_1h=self.scanner.btc_perf_1h if self.scanner else 0.0,
                     price_change_24h=(coin_profile.price_change_24h
                                        if coin_profile else 0.0),
+                    funding_rate=fr,
                 )
             if not should_open_long(setup, mood):
                 logger.info(
@@ -272,11 +275,14 @@ class TradingBot:
             if coin_profile is not None and coin_profile.short_setup:
                 setup = coin_profile.short_setup
             else:
+                fr = (coin_profile.funding_rate
+                      if coin_profile else self.binance.get_funding_rate(symbol))
                 setup = analyze_short_setup(
                     df,
                     btc_perf_1h=self.scanner.btc_perf_1h if self.scanner else 0.0,
                     price_change_24h=(coin_profile.price_change_24h
                                        if coin_profile else 0.0),
+                    funding_rate=fr,
                 )
             if not should_open_short(setup, mood):
                 logger.info(
@@ -460,17 +466,18 @@ class TradingBot:
                         )
                         continue
 
-                    # Funding kontrarian filtresi
-                    if side == "BUY" and coin.funding_rate > 0.001:
+                    # Funding sadece EKSTREM esikte hard filter (>%0.2)
+                    # Normal funding zaten score'a -12'ye kadar etki ediyor.
+                    if side == "BUY" and coin.funding_rate > 0.002:
                         logger.info(
                             f"LONG atlandi ({coin.symbol}): funding "
-                            f"%{coin.funding_rate*100:.3f} cok yuksek"
+                            f"%{coin.funding_rate*100:.3f} EKSTREM (>%0.2)"
                         )
                         continue
-                    if side == "SELL" and coin.funding_rate < -0.001:
+                    if side == "SELL" and coin.funding_rate < -0.002:
                         logger.info(
                             f"SHORT atlandi ({coin.symbol}): funding "
-                            f"%{coin.funding_rate*100:.3f} cok dusuk"
+                            f"%{coin.funding_rate*100:.3f} EKSTREM (<-%0.2)"
                         )
                         continue
 

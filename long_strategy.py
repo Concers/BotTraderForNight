@@ -40,9 +40,14 @@ def _safe(value, default=0.0):
 
 
 def analyze_long_setup(df: pd.DataFrame, btc_perf_1h: float = 0.0,
-                        price_change_24h: float = 0.0) -> dict:
+                        price_change_24h: float = 0.0,
+                        funding_rate: float = 0.0) -> dict:
     """
     Bir coin icin LONG skor ve sinyalleri hesapla.
+
+    funding_rate: Anlik funding rate (decimal, orn 0.001 = %0.1)
+      Negatif (shortlar oduyor) -> LONG icin BONUS (kalabalik short, contrarian firsat)
+      Pozitif (longlar oduyor)  -> LONG icin CEZA (long pahalli)
 
     Returns:
         {
@@ -59,7 +64,7 @@ def analyze_long_setup(df: pd.DataFrame, btc_perf_1h: float = 0.0,
     score = 0
     signals = []
     components = {"trend": 0, "momentum": 0, "accumulation": 0,
-                  "pullback_filter": 0, "adx": 0, "penalty": 0}
+                  "pullback_filter": 0, "adx": 0, "funding": 0, "penalty": 0}
 
     close = _safe(df["close"].iloc[-1])
     if close <= 0:
@@ -232,6 +237,32 @@ def analyze_long_setup(df: pd.DataFrame, btc_perf_1h: float = 0.0,
 
     components["adx"] = adx_pts
     score += adx_pts
+
+    # ============================================
+    # FUNDING RATE BONUSU/CEZASI (LONG perspektifi)
+    # Negatif funding (shortlar oduyor) = LONG icin contrarian firsati
+    # Pozitif funding (longlar oduyor) = LONG icin pahalli giris
+    # ============================================
+    funding_pts = 0
+    if funding_rate <= -0.001:        # <%-0.1: kalabalik short, guclu LONG bonus
+        funding_pts = 12
+        signals.append(f"Funding cok negatif (%{funding_rate*100:+.3f}) - LONG bonusu")
+    elif funding_rate <= -0.0005:     # %-0.05 ile %-0.1: orta bonus
+        funding_pts = 7
+        signals.append(f"Funding negatif (%{funding_rate*100:+.3f})")
+    elif funding_rate <= 0:           # %0 ile %-0.05: hafif bonus
+        funding_pts = 3
+    elif funding_rate <= 0.0005:      # %0 ile %0.05: notr
+        funding_pts = 0
+    elif funding_rate <= 0.001:       # %0.05 ile %0.1: hafif ceza
+        funding_pts = -5
+        signals.append(f"Funding pozitif (%{funding_rate*100:+.3f}) - LONG pahalli")
+    else:                              # >%0.1: agir ceza
+        funding_pts = -12
+        signals.append(f"Funding cok pozitif (%{funding_rate*100:+.3f}) - LONG riskli")
+
+    components["funding"] = funding_pts
+    score += funding_pts
 
     # ============================================
     # PENALTY

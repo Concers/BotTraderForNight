@@ -38,14 +38,17 @@ def _safe(value, default=0.0):
 
 
 def analyze_short_setup(df: pd.DataFrame, btc_perf_1h: float = 0.0,
-                         price_change_24h: float = 0.0) -> dict:
+                         price_change_24h: float = 0.0,
+                         funding_rate: float = 0.0) -> dict:
     """
     Bir coin icin SHORT skor ve sinyalleri hesapla.
 
     Args:
-        df: Indikatorler hesaplanmis dataframe (run_all_indicators sonrasi)
-        btc_perf_1h: BTC'nin 1 saatlik degisimi (RS hesaplamasi icin)
-        price_change_24h: Coinin 24h degisimi (parabolik dusus penalty icin)
+        df: Indikatorler hesaplanmis dataframe
+        btc_perf_1h: BTC 1h degisim (RS icin)
+        price_change_24h: Coin 24h degisim (parabolik dusus penalty icin)
+        funding_rate: Anlik funding (decimal). Pozitif (longlar oduyor) -> SHORT BONUS
+                      Negatif (shortlar oduyor) -> SHORT CEZA (kalabalik short)
 
     Returns:
         {
@@ -62,7 +65,7 @@ def analyze_short_setup(df: pd.DataFrame, btc_perf_1h: float = 0.0,
     score = 0
     signals = []
     components = {"trend": 0, "momentum": 0, "distribution": 0,
-                  "bounce_filter": 0, "adx": 0, "penalty": 0}
+                  "bounce_filter": 0, "adx": 0, "funding": 0, "penalty": 0}
 
     # Veri cek
     close = _safe(df["close"].iloc[-1])
@@ -240,6 +243,32 @@ def analyze_short_setup(df: pd.DataFrame, btc_perf_1h: float = 0.0,
 
     components["adx"] = adx_pts
     score += adx_pts
+
+    # ============================================
+    # FUNDING RATE BONUSU/CEZASI (SHORT perspektifi)
+    # Pozitif funding (longlar oduyor) = SHORT icin contrarian firsati
+    # Negatif funding (shortlar oduyor) = SHORT icin pahalli giris
+    # ============================================
+    funding_pts = 0
+    if funding_rate >= 0.001:         # >%0.1: kalabalik long, guclu SHORT bonus
+        funding_pts = 12
+        signals.append(f"Funding cok pozitif (%{funding_rate*100:+.3f}) - SHORT bonusu")
+    elif funding_rate >= 0.0005:      # %0.05 ile %0.1: orta bonus
+        funding_pts = 7
+        signals.append(f"Funding pozitif (%{funding_rate*100:+.3f})")
+    elif funding_rate >= 0:           # %0 ile %0.05: hafif bonus
+        funding_pts = 3
+    elif funding_rate >= -0.0005:     # %0 ile %-0.05: notr
+        funding_pts = 0
+    elif funding_rate >= -0.001:      # %-0.05 ile %-0.1: hafif ceza
+        funding_pts = -5
+        signals.append(f"Funding negatif (%{funding_rate*100:+.3f}) - SHORT pahalli")
+    else:                              # <-0.1%: agir ceza
+        funding_pts = -12
+        signals.append(f"Funding cok negatif (%{funding_rate*100:+.3f}) - SHORT riskli")
+
+    components["funding"] = funding_pts
+    score += funding_pts
 
     # ============================================
     # PENALTY

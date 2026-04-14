@@ -315,11 +315,15 @@ class MarketScanner:
 
         trend_score = score["components"].get("T", 0)
 
+        # Funding rate'i al (cache'den) - skor bilesenine etki eder
+        coin_funding = self._funding_rates.get(symbol, 0.0)
+
         # SHORT setup analizi (bagimsiz motor)
         short_setup = analyze_short_setup(
             df,
             btc_perf_1h=self.btc_perf_1h,
             price_change_24h=coin["price_change_24h"],
+            funding_rate=coin_funding,
         )
 
         # LONG setup analizi (bagimsiz motor)
@@ -327,6 +331,7 @@ class MarketScanner:
             df,
             btc_perf_1h=self.btc_perf_1h,
             price_change_24h=coin["price_change_24h"],
+            funding_rate=coin_funding,
         )
 
         data = {
