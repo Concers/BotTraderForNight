@@ -30,6 +30,37 @@ SCANNER_FILE = os.path.join(DATA_DIR, "scanner_results.json")
 WATCHLIST_FILE = os.path.join(DATA_DIR, "watchlist.json")
 
 
+def _weighted_momentum(rs: float, rsi: float, rvol: float,
+                        side: str = "LONG") -> float:
+    """
+    Agirlikli momentum skoru: RS*0.4 + RSI*0.3 + RVOL*0.3 -> 0-100.
+
+    LONG: RS pozitif, RSI 50-70, RVOL yuksek = ideal
+    SHORT: RS negatif, RSI 30-50, RVOL yuksek = ideal
+
+    Her bilesen 0-100 arasina normalize edilir, sonra ağırlıklandırılır.
+    """
+    # RS (-5 ile +5 arasi tipik) -> 0-100
+    if side == "LONG":
+        rs_norm = max(0, min(100, (rs + 3) * 20))   # RS=-3 -> 0, +3 -> 120, clamped 100
+    else:
+        rs_norm = max(0, min(100, (-rs + 3) * 20))  # RS=+3 -> 0, -3 -> 100
+
+    # RSI (0-100) -> ideal bandin yakinligi
+    if side == "LONG":
+        # Ideal 50-70: 60'a yakinlik
+        rsi_norm = max(0, min(100, 100 - abs(rsi - 60) * 2.5))
+    else:
+        # Ideal 30-50: 40'a yakinlik
+        rsi_norm = max(0, min(100, 100 - abs(rsi - 40) * 2.5))
+
+    # RVOL (0-3+ arasi) -> 0-100
+    rvol_norm = max(0, min(100, rvol * 33))  # 3x -> 99, 1x -> 33
+
+    score = rs_norm * 0.4 + rsi_norm * 0.3 + rvol_norm * 0.3
+    return round(score, 1)
+
+
 class CoinProfile:
     """Tek bir coinin roentgen sonucu."""
 
@@ -60,6 +91,9 @@ class CoinProfile:
         self.long_setup = data.get("long_setup", {})
         # BTC korelasyon flag: "GERCEK" (tek basina), "SURU" (birlikte hareket), ""
         self.correlation_tag = data.get("correlation_tag", "")
+        # Agirlikli momentum skorlari (RS*0.4 + RSI*0.3 + RVOL*0.3), 0-100
+        self.long_momentum = data.get("long_momentum", 50.0)
+        self.short_momentum = data.get("short_momentum", 50.0)
         # Anlik funding rate (kontrarian filtre) - pozitif: LONG pahalli, negatif: SHORT pahalli
         self.funding_rate = data.get("funding_rate", 0.0)
         # Onceki taramada STRONG_BUY ise "long", STRONG_SELL ise "short", yoksa None
@@ -312,6 +346,9 @@ class MarketScanner:
             "rsi_slope_3m": round(rsi_slope(df, 3), 2),
             # BTC Korelasyon flag (sonradan doldurulacak)
             "correlation_tag": "",
+            # Agirlikli momentum skorlari (RS*0.4 + RSI*0.3 + RVOL*0.3)
+            "long_momentum": _weighted_momentum(rs, rsi, rvol, side="LONG"),
+            "short_momentum": _weighted_momentum(rs, rsi, rvol, side="SHORT"),
             "previously_tracked": (
                 "long" if symbol in self._prev_strong_buy
                 else "short" if symbol in self._prev_strong_sell
@@ -545,7 +582,7 @@ class MarketScanner:
                 f_pct = c.funding_rate * 100
                 lines.append(
                     f"  {tracked_tag}{decay_tag}{corr_tag}{coin:8s} "
-                    f"LongS:{c.long_score} {c.long_verdict} "
+                    f"LongS:{c.long_score} M:{c.long_momentum:.0f} "
                     f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) "
                     f"RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
@@ -566,7 +603,7 @@ class MarketScanner:
                 f_pct = c.funding_rate * 100
                 lines.append(
                     f"  {tracked_tag}{decay_tag}{corr_tag}{coin:8s} "
-                    f"ShortS:{c.short_score} {c.short_verdict} "
+                    f"ShortS:{c.short_score} M:{c.short_momentum:.0f} "
                     f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) "
                     f"RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
