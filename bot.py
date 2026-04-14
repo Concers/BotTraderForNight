@@ -229,6 +229,34 @@ class TradingBot:
         except Exception as e:
             logger.debug(f"Multi-TF RSI kontrolu atlandi ({symbol}): {e}")
 
+        # --- PRE-ENTRY: FOMO / Pullback Filtresi ---
+        # Son 3 mum cok buyuk yesil/kirmizi -> tepede/dipte FOMO
+        # Pullback bekle: son mum onceki 2'den kucuk olmali (yorgunluk)
+        try:
+            last3 = df.tail(3)
+            ranges = (last3["high"] - last3["low"]).values
+            avg_range_20 = (df["high"] - df["low"]).tail(20).mean()
+            last_range = float(ranges[-1])
+            avg_3 = float(ranges.mean())
+
+            if avg_range_20 > 0:
+                # Son 3 mumun ortalama range'i 20mum'dan 2.5x buyukse FOMO bolge
+                if avg_3 > avg_range_20 * 2.5:
+                    # Son mum hala ayni boyut/buyukse -> pullback yok
+                    if last_range > avg_range_20 * 2.0:
+                        logger.warning(
+                            f"{symbol} FOMO/PULLBACK YOK: son 3 mum avg range "
+                            f"{avg_3:.6f} > 20mum x2.5 ({avg_range_20:.6f}) "
+                            f"& son mum hala buyuk. {side} iptal."
+                        )
+                        self.journal.record_rejected(
+                            symbol, {"score": 0, "components": {}},
+                            f"FOMO entry - pullback yok"
+                        )
+                        return
+        except Exception as e:
+            logger.debug(f"FOMO filter atlandi ({symbol}): {e}")
+
         # BTC verisi
         btc_df = self.binance.get_klines("BTCUSDT", interval="3m", limit=200)
         if not btc_df.empty:
