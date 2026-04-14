@@ -73,6 +73,8 @@ class MarketScanner:
         self.results: list[CoinProfile] = []
         self.btc_perf_1h = 0.0
         self.btc_perf_24h = 0.0
+        self.btc_rvol = 1.0  # BTC'nin son 3dk mumunun 20 mum avg'sine orani
+        self.btc_rsi = 50.0
         self.market_mood = "NOTR"  # BULL, BEAR, NOTR
         self.scan_time = ""
         # Onceki taramadaki STRONG_BUY/STRONG_SELL coinleri hafizala (oncelik icin)
@@ -89,7 +91,7 @@ class MarketScanner:
 
         logger.info("Market Scanner v2 baslatildi...")
 
-        # 1. BTC referans verisi
+        # 1. BTC referans verisi (perf + RVOL + RSI)
         btc_df = self.binance.get_klines("BTCUSDT", interval="3m", limit=200)
         if not btc_df.empty:
             btc_df = run_all_indicators(btc_df)
@@ -97,12 +99,25 @@ class MarketScanner:
             self.btc_perf_1h = ((btc_closes[-1] - btc_closes[-20]) / btc_closes[-20]) * 100
             self.btc_perf_24h = ((btc_closes[-1] - btc_closes[0]) / btc_closes[0]) * 100
 
+            # BTC RVOL (son mum hacmi / 20 mum avg)
+            btc_vol_cur = float(btc_df["volume"].iloc[-1])
+            btc_vol_avg = float(btc_df["volume"].tail(20).mean())
+            self.btc_rvol = (btc_vol_cur / btc_vol_avg) if btc_vol_avg > 0 else 1.0
+
+            # BTC RSI (korelasyon filtresinde kullanilabilir)
+            self.btc_rsi = float(btc_df["rsi"].iloc[-1]) if "rsi" in btc_df.columns else 50.0
+
             if self.btc_perf_1h > 0.5:
                 self.market_mood = "BULL"
             elif self.btc_perf_1h < -0.5:
                 self.market_mood = "BEAR"
             else:
                 self.market_mood = "NOTR"
+
+            logger.info(
+                f"BTC: Perf:%{self.btc_perf_1h:+.2f}/1h RVOL:x{self.btc_rvol:.2f} "
+                f"RSI:{self.btc_rsi:.0f} Mood:{self.market_mood}"
+            )
 
         # 2. Tum ticker'lari al
         try:
