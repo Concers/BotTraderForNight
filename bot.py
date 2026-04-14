@@ -230,30 +230,49 @@ class TradingBot:
             logger.debug(f"Multi-TF RSI kontrolu atlandi ({symbol}): {e}")
 
         # --- PRE-ENTRY: FOMO / Pullback Filtresi ---
-        # Son 3 mum cok buyuk yesil/kirmizi -> tepede/dipte FOMO
-        # Pullback bekle: son mum onceki 2'den kucuk olmali (yorgunluk)
+        # Triple sart (hepsi true ise FOMO -> iptal):
+        #   1. Son 3 mum range avg 20mum avg'dan 2.5x +
+        #   2. Son mum extension (LONG: close > prev_high; SHORT: close < prev_low)
+        #   3. Wick minimal (LONG: upper_wick/body < 0.3; SHORT: lower_wick/body < 0.3)
+        # Wick varsa = saticilar/alicilar var, donus baslamis olabilir -> daha guvenli
         try:
             last3 = df.tail(3)
             ranges = (last3["high"] - last3["low"]).values
-            avg_range_20 = (df["high"] - df["low"]).tail(20).mean()
-            last_range = float(ranges[-1])
-            avg_3 = float(ranges.mean())
+            avg_range_20 = float((df["high"] - df["low"]).tail(20).mean())
+            last_candle = df.iloc[-1]
+            prev_candle = df.iloc[-2]
 
-            if avg_range_20 > 0:
-                # Son 3 mumun ortalama range'i 20mum'dan 2.5x buyukse FOMO bolge
-                if avg_3 > avg_range_20 * 2.5:
-                    # Son mum hala ayni boyut/buyukse -> pullback yok
-                    if last_range > avg_range_20 * 2.0:
-                        logger.warning(
-                            f"{symbol} FOMO/PULLBACK YOK: son 3 mum avg range "
-                            f"{avg_3:.6f} > 20mum x2.5 ({avg_range_20:.6f}) "
-                            f"& son mum hala buyuk. {side} iptal."
-                        )
-                        self.journal.record_rejected(
-                            symbol, {"score": 0, "components": {}},
-                            f"FOMO entry - pullback yok"
-                        )
-                        return
+            body = abs(float(last_candle["close"]) - float(last_candle["open"]))
+
+            if side == "BUY":
+                is_extension = float(last_candle["close"]) > float(prev_candle["high"])
+                upper_wick = float(last_candle["high"]) - max(
+                    float(last_candle["close"]), float(last_candle["open"])
+                )
+                wick_ratio = upper_wick / (body + 1e-9)
+                wick_dir = "ust"
+            else:
+                is_extension = float(last_candle["close"]) < float(prev_candle["low"])
+                lower_wick = min(
+                    float(last_candle["close"]), float(last_candle["open"])
+                ) - float(last_candle["low"])
+                wick_ratio = lower_wick / (body + 1e-9)
+                wick_dir = "alt"
+
+            if avg_range_20 > 0 and ranges.mean() > avg_range_20 * 2.5:
+                if (ranges[-1] > avg_range_20 * 2.0
+                        and is_extension
+                        and wick_ratio < 0.3):
+                    logger.warning(
+                        f"{symbol} FOMO ENTRY: range avg %{ranges.mean()/avg_range_20:.1f}x "
+                        f"+ extension + zayif {wick_dir} fitil "
+                        f"(ratio:{wick_ratio:.2f}). {side} iptal."
+                    )
+                    self.journal.record_rejected(
+                        symbol, {"score": 0, "components": {}},
+                        f"FOMO: extension + minimal {wick_dir} wick"
+                    )
+                    return
         except Exception as e:
             logger.debug(f"FOMO filter atlandi ({symbol}): {e}")
 
