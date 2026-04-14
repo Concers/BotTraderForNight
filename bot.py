@@ -365,6 +365,13 @@ class TradingBot:
                 for coin in long_candidates:
                     if coin.rsi >= 99 or coin.long_score < 55:
                         continue
+                    # RVOL min filtresi: hacimsiz yukselis = boga tuzagi riski
+                    if coin.rvol < 1.2:
+                        logger.info(
+                            f"LONG atlandi ({coin.symbol}): RVOL {coin.rvol:.2f} "
+                            f"< 1.2 (hacimsiz yukselis)"
+                        )
+                        continue
                     # Funding kontrarian filtresi: >%0.1 = LONG pahalli, atla
                     if coin.funding_rate > 0.001:
                         logger.info(
@@ -402,6 +409,13 @@ class TradingBot:
 
                 for coin in short_candidates:
                     if coin.rsi >= 99 or coin.short_score < 55:
+                        continue
+                    # RVOL min filtresi: hacimsiz dusus = sessizlik, zayif sinyal
+                    if coin.rvol < 1.2:
+                        logger.info(
+                            f"SHORT atlandi ({coin.symbol}): RVOL {coin.rvol:.2f} "
+                            f"< 1.2 (hacimsiz dusus)"
+                        )
                         continue
                     # Funding kontrarian filtresi: <-%0.1 = SHORT pahalli, atla
                     if coin.funding_rate < -0.001:
