@@ -58,6 +58,8 @@ class CoinProfile:
         self.long_verdict = data.get("long_verdict", "NONE")
         self.long_signals = data.get("long_signals", [])
         self.long_setup = data.get("long_setup", {})
+        # BTC korelasyon flag: "GERCEK" (tek basina), "SURU" (birlikte hareket), ""
+        self.correlation_tag = data.get("correlation_tag", "")
         # Anlik funding rate (kontrarian filtre) - pozitif: LONG pahalli, negatif: SHORT pahalli
         self.funding_rate = data.get("funding_rate", 0.0)
         # Onceki taramada STRONG_BUY ise "long", STRONG_SELL ise "short", yoksa None
@@ -176,6 +178,9 @@ class MarketScanner:
 
         # 5. Sonuclari kategorize et
         self._categorize_results()
+
+        # 5a2. BTC Korelasyon Analizi
+        self._analyze_correlation()
 
         # 5b. Bu turun STRONG'larini bir sonraki tarama icin hafizala
         new_strong_buy: set[str] = set()
@@ -305,6 +310,8 @@ class MarketScanner:
             "funding_rate": self._funding_rates.get(symbol, 0.0),
             # 3m RSI egimi (son 3 bar) - negatif: momentum zayifliyor
             "rsi_slope_3m": round(rsi_slope(df, 3), 2),
+            # BTC Korelasyon flag (sonradan doldurulacak)
+            "correlation_tag": "",
             "previously_tracked": (
                 "long" if symbol in self._prev_strong_buy
                 else "short" if symbol in self._prev_strong_sell
@@ -368,6 +375,34 @@ class MarketScanner:
             else:
                 r.category = "NOTR"
 
+    def _analyze_correlation(self):
+        """
+        BTC Korelasyon Analizi:
+          * BTC notr (|btc_perf_1h| < 0.5):
+              - Coin RVOL >= 2 -> "GERCEK" (tek basina inci, kaliteli fırsat)
+          * Piyasa suru halinde (>60% coin ayni yonde + BTC RVOL yuksek):
+              - Tum high-RVOL coinlere "SURU" flag (pump baskisi, riskli)
+        """
+        if not self.results:
+            return
+
+        btc_neutral = abs(self.btc_perf_1h) < 0.5
+
+        # Pozitif/negatif perf oranı
+        positive = sum(1 for r in self.results if r.price_change_1h > 0.5)
+        negative = sum(1 for r in self.results if r.price_change_1h < -0.5)
+        total = len(self.results)
+        herd_long = (positive / total > 0.6) and self.btc_rvol > 1.5
+        herd_short = (negative / total > 0.6) and self.btc_rvol > 1.5
+
+        for r in self.results:
+            if btc_neutral and r.rvol >= 2.0:
+                r.correlation_tag = "GERCEK"
+            elif herd_long and r.rvol >= 2.0 and r.price_change_1h > 0.5:
+                r.correlation_tag = "SURU"
+            elif herd_short and r.rvol >= 2.0 and r.price_change_1h < -0.5:
+                r.correlation_tag = "SURU"
+
     def _save_results(self):
         """Sonuclari JSON'a kaydet."""
         os.makedirs(DATA_DIR, exist_ok=True)
@@ -423,12 +458,17 @@ class MarketScanner:
 
         mood_emoji = {"BULL": "🟢", "BEAR": "🔴", "NOTR": "⚪"}.get(s["market_mood"], "⚪")
 
+        # Korelasyon ozeti
+        gercek_count = sum(1 for r in self.results if r.correlation_tag == "GERCEK")
+        suru_count = sum(1 for r in self.results if r.correlation_tag == "SURU")
+
         lines = [
             f"🔬 <b>MARKET RONTGENI</b> ({s['scan_time']})",
             f"━━━━━━━━━━━━━━━━━━",
             f"{mood_emoji} Piyasa: <b>{s['market_mood']}</b>",
-            f"₿ BTC: %{s['btc_1h']:+.2f} (1s) | %{s['btc_24h']:+.2f} (24s)",
-            f"📊 Taranan: {s['total']} coin",
+            f"₿ BTC: %{s['btc_1h']:+.2f} (1s) | %{s['btc_24h']:+.2f} (24s) "
+            f"| RVOL:x{self.btc_rvol:.1f}",
+            f"📊 Taranan: {s['total']} coin | ⭐ {gercek_count} gercek | 🐑 {suru_count} suru",
             f"━━━━━━━━━━━━━━━━━━",
         ]
 
@@ -497,13 +537,17 @@ class MarketScanner:
             for c in top_longs:
                 coin = c.symbol.replace("USDT", "")
                 tracked_tag = "🔄" if c.previously_tracked == "long" else ""
-                # Momentum zayifliyor uyarisi (RSI egimi negatif)
                 decay_tag = "⚠️" if c.rsi_slope_3m < -3 else ""
+                # Korelasyon: GERCEK=⭐ SURU=🐑
+                corr_tag = "⭐" if c.correlation_tag == "GERCEK" else (
+                    "🐑" if c.correlation_tag == "SURU" else ""
+                )
                 f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {tracked_tag}{decay_tag}{coin:8s} LongS:{c.long_score} {c.long_verdict} "
-                    f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) RS:{c.relative_strength:+.1f} "
-                    f"F:%{f_pct:+.3f}"
+                    f"  {tracked_tag}{decay_tag}{corr_tag}{coin:8s} "
+                    f"LongS:{c.long_score} {c.long_verdict} "
+                    f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) "
+                    f"RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
 
         top_shorts = sorted(
@@ -515,13 +559,16 @@ class MarketScanner:
             for c in top_shorts:
                 coin = c.symbol.replace("USDT", "")
                 tracked_tag = "🔄" if c.previously_tracked == "short" else ""
-                # Momentum bounce riski uyarisi (SHORT icin: egim POZITIF = bounce)
                 decay_tag = "⚠️" if c.rsi_slope_3m > 3 else ""
+                corr_tag = "⭐" if c.correlation_tag == "GERCEK" else (
+                    "🐑" if c.correlation_tag == "SURU" else ""
+                )
                 f_pct = c.funding_rate * 100
                 lines.append(
-                    f"  {tracked_tag}{decay_tag}{coin:8s} ShortS:{c.short_score} {c.short_verdict} "
-                    f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) RS:{c.relative_strength:+.1f} "
-                    f"F:%{f_pct:+.3f}"
+                    f"  {tracked_tag}{decay_tag}{corr_tag}{coin:8s} "
+                    f"ShortS:{c.short_score} {c.short_verdict} "
+                    f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) "
+                    f"RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
 
         # Ozet
