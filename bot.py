@@ -279,62 +279,48 @@ class TradingBot:
                 await asyncio.sleep(5)
 
     async def periodic_report(self):
-        """Her 20 dakikada Telegram'a durum raporu gonder."""
+        """Her 1 saatte PDF rapor olustur ve Telegram'a gonder."""
         await asyncio.sleep(60)  # Ilk rapor 1dk sonra
         while self._monitoring:
             try:
-                positions = self.binance.get_open_positions()
-                balance = self.binance.get_account_balance()
-                if balance <= 0:
-                    balance = 150.0
-
-                s = self.journal.get_summary()
-                total_pnl = sum(p["unrealized_pnl"] for p in positions)
-                open_count = len(positions)
-
-                # Acik pozisyon detaylari
-                pos_lines = []
-                for p in sorted(positions, key=lambda x: x["unrealized_pnl"], reverse=True):
-                    side_txt = "L" if p["side"] == "BUY" else "S"
-                    emoji = "🟢" if p["unrealized_pnl"] >= 0 else "🔴"
-                    entry = p["entry_price"]
-                    mark = p["mark_price"]
-                    if p["side"] == "BUY":
-                        pct = ((mark - entry) / entry) * 100 if entry > 0 else 0
-                    else:
-                        pct = ((entry - mark) / entry) * 100 if entry > 0 else 0
-                    coin = p["symbol"].replace("USDT", "")
-                    pos_lines.append(
-                        f"{emoji} {coin} {side_txt} | ${p['unrealized_pnl']:+.2f} (%{pct:+.1f})"
-                    )
-
-                pos_text = "\n".join(pos_lines) if pos_lines else "Acik pozisyon yok"
-
-                # Kapanan islem sayisi ve PnL
-                closed_pnl = s["total_pnl"]
-                combined_pnl = closed_pnl + total_pnl
-
-                # Kasa bilgisi
                 w = self.wallet
-                kasa_pnl_pct = ((w.total_balance - w.data['initial_balance']) / w.data['initial_balance']) * 100
+                s = self.journal.get_summary()
+                open_count = len(self.risk.active_trades)
+                kasa_pnl_pct = ((w.total_balance - w.data['initial_balance'])
+                                / w.data['initial_balance']) * 100
 
+                # Kisa Telegram bildirimi (PDF oncesi)
                 await self.notifier.send_message(
-                    f"📊 <b>20DK RAPOR</b> ({datetime.now().strftime('%H:%M')})\n"
+                    f"📄 <b>SAATLIK RAPOR</b> ({datetime.now().strftime('%H:%M')})\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"💼 KASA: <b>${w.total_balance:.2f}</b> "
                     f"(${w.data['total_pnl']:+.2f} | %{kasa_pnl_pct:+.1f})\n"
                     f"💵 Kullanilabilir: ${w.available_balance:.2f}\n"
-                    f"📂 Acik: {open_count} | Kapanan: {s['closed']}\n"
+                    f"📂 Acik: {open_count} | Kapanan: {s.get('closed', 0)}\n"
                     f"🎯 Win Rate: %{s['win_rate']:.0f} "
                     f"({w.data['wins']}W/{w.data['losses']}L)\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"{pos_text}",
+                    f"PDF rapor hazirlaniyor...",
                     category="rapor",
                 )
+
+                # PDF olustur ve gonder
+                try:
+                    pdf_path = generate_pdf_report()
+                    await self.notifier.send_document(
+                        pdf_path,
+                        f"Saatlik Rapor - {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+                    )
+                except Exception as pdf_err:
+                    logger.error(f"PDF olusturma hatasi: {pdf_err}")
+                    await self.notifier.send_message(
+                        f"⚠️ PDF olusturulamadi: {pdf_err}",
+                        category="rapor",
+                    )
             except Exception as e:
                 logger.error(f"Periyodik rapor hatasi: {e}")
 
-            await asyncio.sleep(1200)  # 20 dakika
+            await asyncio.sleep(3600)  # 1 saat
 
     async def market_scanner_loop(self):
         """
@@ -846,7 +832,7 @@ class TradingBot:
             loop.create_task(self._safe_scanner())
             loop.create_task(self.periodic_report())
             # auto_shutdown kaldirildi - bot 7/24 calisir, pm2 yonetir
-            logger.info(">>> MONITOR + SCANNER + 20DK RAPOR BASLATILDI (sonsuz) <<<")
+            logger.info(">>> MONITOR + SCANNER + SAATLIK PDF RAPOR BASLATILDI (sonsuz) <<<")
 
         app.post_init = post_init
 
