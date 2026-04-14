@@ -299,6 +299,23 @@ def analyze_short_setup(df: pd.DataFrame, btc_perf_1h: float = 0.0,
         penalty -= 10
         signals.append("Hammer rejection (last candle)")
 
+    # ============================================
+    # MULTI-CONFIRMATION (LL/LH son 3 mum) - SHORT yapisi
+    # Lower Low + Lower High her mumda = guclu dusen yapi
+    # ============================================
+    last_4 = df.tail(4)
+    if len(last_4) >= 4:
+        highs = last_4["high"].values
+        lows = last_4["low"].values
+        ll_count = sum(1 for i in range(1, 4) if lows[i] < lows[i - 1])
+        lh_count = sum(1 for i in range(1, 4) if highs[i] < highs[i - 1])
+        if ll_count >= 3 and lh_count >= 3:
+            penalty += 8
+            signals.append("LL+LH son 3 mum (guclu dusus)")
+        elif ll_count + lh_count >= 4:
+            penalty += 4
+            signals.append("Kismi LL/LH")
+
     components["penalty"] = penalty
     score += penalty
 

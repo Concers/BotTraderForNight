@@ -293,6 +293,25 @@ def analyze_long_setup(df: pd.DataFrame, btc_perf_1h: float = 0.0,
         penalty -= 10
         signals.append("Top wick rejection (last candle)")
 
+    # ============================================
+    # MULTI-CONFIRMATION (HH/HL son 3 mum)
+    # Yukselen yapi: her mum oncekinden yukseki tepe + yukseki dip
+    # Bonus: +8 (guclu LONG yapisi)
+    # ============================================
+    last_4 = df.tail(4)
+    if len(last_4) >= 4:
+        highs = last_4["high"].values
+        lows = last_4["low"].values
+        # Son 3 mumun HH (higher high) + HL (higher low) sayar
+        hh_count = sum(1 for i in range(1, 4) if highs[i] > highs[i - 1])
+        hl_count = sum(1 for i in range(1, 4) if lows[i] > lows[i - 1])
+        if hh_count >= 3 and hl_count >= 3:
+            penalty += 8
+            signals.append("HH+HL son 3 mum (guclu yapi)")
+        elif hh_count + hl_count >= 4:
+            penalty += 4
+            signals.append("Kismi HH/HL")
+
     components["penalty"] = penalty
     score += penalty
 
