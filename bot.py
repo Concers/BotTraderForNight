@@ -336,59 +336,6 @@ class TradingBot:
 
             await asyncio.sleep(1200)  # 20 dakika
 
-    async def auto_shutdown(self, hours: float = 3.0):
-        """Belirli sure sonra botu kapat ve final rapor olustur."""
-        total_seconds = int(hours * 3600)
-        logger.info(f"Bot {hours} saat sonra kapanacak ({total_seconds}sn)")
-
-        await self.notifier.send_message(
-            f"⏱️ Bot {hours:.0f} saat boyunca calisacak.\n"
-            f"Kapanma: {datetime.now().strftime('%H:%M')} + {hours:.0f}saat"
-        )
-
-        await asyncio.sleep(total_seconds)
-
-        logger.info("SURE DOLDU - Bot kapaniyor...")
-
-        # Tum acik pozisyonlari kapat
-        positions = self.binance.get_open_positions()
-        for p in positions:
-            try:
-                close_side = "SELL" if p["side"] == "BUY" else "BUY"
-                self.binance.cancel_all_orders(p["symbol"])
-                self.binance.close_position(p["symbol"], p["side"], p["quantity"])
-                self.journal.record_trade_close(
-                    p["symbol"],
-                    self.binance.get_current_price(p["symbol"]),
-                    "BOT KAPANIYOR - 3 saat doldu"
-                )
-            except Exception as e:
-                logger.error(f"Kapanma hatasi ({p['symbol']}): {e}")
-
-        # PDF rapor olustur ve gonder
-        try:
-            pdf_path = generate_pdf_report()
-            s = self.journal.get_summary()
-
-            await self.notifier.send_message(
-                f"🏁 <b>3 SAAT TEST TAMAMLANDI</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"Toplam islem: {s['total_trades']}\n"
-                f"Kazanan: {s['wins']} | Kaybeden: {s['losses']}\n"
-                f"Win Rate: %{s['win_rate']:.0f}\n"
-                f"Toplam PnL: <b>${s['total_pnl']:+.2f}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"PDF rapor gonderiliyor..."
-            )
-
-            await self.notifier.send_document(pdf_path, "Detayli 3 Saatlik Rapor")
-        except Exception as e:
-            logger.error(f"Final rapor hatasi: {e}")
-
-        # Botu durdur
-        self._monitoring = False
-        logger.info("Bot kapatildi.")
-
     async def market_scanner_loop(self):
         """
         Scanner bazli islem sistemi.
@@ -898,8 +845,8 @@ class TradingBot:
             loop.create_task(self._safe_monitor())
             loop.create_task(self._safe_scanner())
             loop.create_task(self.periodic_report())
-            loop.create_task(self.auto_shutdown(hours=3.0))
-            logger.info(">>> MONITOR + SCANNER + 20DK RAPOR + 3 SAAT TIMER BASLATILDI <<<")
+            # auto_shutdown kaldirildi - bot 7/24 calisir, pm2 yonetir
+            logger.info(">>> MONITOR + SCANNER + 20DK RAPOR BASLATILDI (sonsuz) <<<")
 
         app.post_init = post_init
 
