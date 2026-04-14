@@ -25,6 +25,7 @@ from trade_journal import TradeJournal, CoinLists
 from report_generator import generate_pdf_report
 from wallet import Wallet
 from market_scanner import MarketScanner
+from trading_rules import TradingRules
 import config
 
 logger = setup_logger("Bot")
@@ -47,6 +48,7 @@ class TradingBot:
         self.coin_lists = CoinLists()
         self.wallet = Wallet()
         self.scanner = MarketScanner(self.binance)
+        self.rules = TradingRules()
         self._monitoring = True
         self._futures_symbols = set()
 
@@ -132,6 +134,27 @@ class TradingBot:
         if self._futures_symbols and symbol not in self._futures_symbols:
             logger.warning(f"{symbol} vadeli islemlerde yok. Atlanacak.")
             return
+
+        # NO-TRADE ZONE kontrolu (TR saat bazli)
+        in_zone, event_name = self.rules.is_no_trade_zone()
+        if in_zone:
+            logger.warning(
+                f"{symbol} NO-TRADE ZONE: {event_name}. Atlanacak."
+            )
+            return
+
+        # Funding hard filter (abs > %0.15 -> islem yapma)
+        try:
+            fr = self.binance.get_funding_rate(symbol)
+            if self.rules.is_funding_blocked(fr):
+                logger.warning(
+                    f"{symbol} FUNDING BLOCKED: %{fr*100:+.4f} > "
+                    f"%{self.rules.funding_threshold*100:.3f}. "
+                    f"{self.rules.blacklist_reason}"
+                )
+                return
+        except Exception as e:
+            logger.debug(f"Funding kontrolu atlandi ({symbol}): {e}")
 
         # Testnet'te gecerli mi?
         if not self.binance.is_tradeable(symbol):
@@ -671,20 +694,8 @@ class TradingBot:
                         )
                         continue
 
-                    # Funding sadece EKSTREM esikte hard filter (>%0.2)
-                    # Normal funding zaten score'a -12'ye kadar etki ediyor.
-                    if side == "BUY" and coin.funding_rate > 0.002:
-                        logger.info(
-                            f"LONG atlandi ({coin.symbol}): funding "
-                            f"%{coin.funding_rate*100:.3f} EKSTREM (>%0.2)"
-                        )
-                        continue
-                    if side == "SELL" and coin.funding_rate < -0.002:
-                        logger.info(
-                            f"SHORT atlandi ({coin.symbol}): funding "
-                            f"%{coin.funding_rate*100:.3f} EKSTREM (<-%0.2)"
-                        )
-                        continue
+                    # Funding hard filter trading_rules.json'dan gelir
+                    # (process_signal icinde abs(funding) > esik kontrolu)
 
                     # Mood-aware esik
                     setup = {"score": score}

@@ -6,6 +6,7 @@ __pycache__/
 
 # Runtime state (her VPS kendi state'ini olussun)
 data/*.json
+!data/trading_rules.json   # Konfig - git'te kalsin
 reports/*.pdf
 
 # OS/editor

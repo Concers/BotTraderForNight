@@ -1,0 +1,40 @@
+{
+  "trading_rules": {
+    "no_trade_zones": [
+      {
+        "event": "Funding Settlement 1",
+        "start": "02:50",
+        "end": "03:10",
+        "reason": "Funding settlement wick'lerinde 2% SL hunt riski"
+      },
+      {
+        "event": "Funding Settlement 2",
+        "start": "10:50",
+        "end": "11:10",
+        "reason": "Funding settlement wick'lerinde 2% SL hunt riski"
+      },
+      {
+        "event": "Funding Settlement 3",
+        "start": "18:50",
+        "end": "19:10",
+        "reason": "Funding settlement wick'lerinde 2% SL hunt riski"
+      },
+      {
+        "event": "London Market Open",
+        "start": "09:58",
+        "end": "10:15",
+        "reason": "Acilis volatilite spike'i"
+      },
+      {
+        "event": "US Market Open",
+        "start": "16:25",
+        "end": "16:45",
+        "reason": "Asiri likidite kaymasi + kurumsal bot aktivitesi"
+      }
+    ],
+    "funding_rate_filter": {
+      "pause_token_if_abs_funding_above": 0.0015,
+      "blacklist_reason": "Yuksek slippage riski + funding-driven volatilite"
+    }
+  }
+}
