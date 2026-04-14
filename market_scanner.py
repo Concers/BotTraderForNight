@@ -629,92 +629,42 @@ class MarketScanner:
         return "\n".join(lines)
 
     def generate_telegram_report(self) -> str:
-        """Telegram icin Market Rontgeni raporu."""
+        """
+        Telegram raporu - SADECE LONG ve SHORT adaylari.
+        Kategori sayilari, sektor, korelasyon ozeti vb. arka planda hesaplanir
+        ama Telegram'a gonderilmez (rapor sade tutulur).
+        """
         s = self.get_summary()
-
         mood_emoji = {"BULL": "🟢", "BEAR": "🔴", "NOTR": "⚪"}.get(s["market_mood"], "⚪")
 
-        # Korelasyon ozeti
-        gercek_count = sum(1 for r in self.results if r.correlation_tag == "GERCEK")
-        suru_count = sum(1 for r in self.results if r.correlation_tag == "SURU")
-
-        lines = [
-            f"🔬 <b>MARKET RONTGENI</b> ({s['scan_time']})",
-            f"━━━━━━━━━━━━━━━━━━",
-            f"{mood_emoji} Piyasa: <b>{s['market_mood']}</b>",
-            f"₿ BTC: %{s['btc_1h']:+.2f} (1s) | %{s['btc_24h']:+.2f} (24s) "
-            f"| RVOL:x{self.btc_rvol:.1f}",
-            f"📊 Taranan: {s['total']} coin | ⭐ {gercek_count} gercek | 🐑 {suru_count} suru",
-            f"━━━━━━━━━━━━━━━━━━",
-        ]
-
-        # STRONG BUY
-        if s["strong_buy"]:
-            lines.append(f"\n🟢🟢 <b>STRONG BUY ({len(s['strong_buy'])})</b>")
-            for c in sorted(s["strong_buy"], key=lambda x: x.canslim_score, reverse=True)[:10]:
-                coin = c.symbol.replace("USDT", "")
-                rvol_tag = f"🔥{c.rvol:.1f}x" if c.rvol >= 2.0 else f"{c.rvol:.1f}x"
-                tracked_tag = "🔄" if c.previously_tracked == "long" else ""
-                f_pct = c.funding_rate * 100
-                lines.append(
-                    f"  {tracked_tag}{coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
-                    f"RSI:{c.rsi:.0f} RVOL:{rvol_tag} F:%{f_pct:+.3f} %{c.price_change_1h:+.1f}"
-                )
-
-        # BUY
-        if s["buy"]:
-            lines.append(f"\n🟢 <b>BUY ({len(s['buy'])})</b>")
-            for c in sorted(s["buy"], key=lambda x: x.canslim_score, reverse=True)[:10]:
-                coin = c.symbol.replace("USDT", "")
-                rvol_tag = f"🔥{c.rvol:.1f}x" if c.rvol >= 2.0 else f"{c.rvol:.1f}x"
-                tracked_tag = "🔄" if c.previously_tracked == "long" else ""
-                f_pct = c.funding_rate * 100
-                lines.append(
-                    f"  {tracked_tag}{coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
-                    f"RSI:{c.rsi:.0f} RVOL:{rvol_tag} F:%{f_pct:+.3f}"
-                )
-
-        # STRONG SELL (olu coinleri gosterme)
-        real_strong_sell = [c for c in s["strong_sell"] if c.rsi < 99 and c.rvol > 0]
-        if real_strong_sell:
-            lines.append(f"\n🔴🔴 <b>STRONG SELL ({len(real_strong_sell)})</b>")
-            for c in sorted(real_strong_sell, key=lambda x: x.canslim_score)[:10]:
-                coin = c.symbol.replace("USDT", "")
-                tracked_tag = "🔄" if c.previously_tracked == "short" else ""
-                f_pct = c.funding_rate * 100
-                lines.append(
-                    f"  {tracked_tag}{coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
-                    f"RSI:{c.rsi:.0f} RVOL:{c.rvol:.1f}x F:%{f_pct:+.3f}"
-                )
-
-        # SELL (olu coinleri gosterme)
-        real_sell = [c for c in s["sell"] if c.rsi < 99 and c.rvol > 0]
-        if real_sell:
-            lines.append(f"\n🔴 <b>SELL ({len(real_sell)})</b>")
-            for c in sorted(real_sell, key=lambda x: x.canslim_score)[:10]:
-                coin = c.symbol.replace("USDT", "")
-                tracked_tag = "🔄" if c.previously_tracked == "short" else ""
-                f_pct = c.funding_rate * 100
-                lines.append(
-                    f"  {tracked_tag}{coin:8s} S:{c.canslim_score:.0f} RS:{c.relative_strength:+.1f} "
-                    f"RSI:{c.rsi:.0f} RVOL:{c.rvol:.1f}x F:%{f_pct:+.3f}"
-                )
-
-        # LONG/SHORT CANDIDATES (yeni motorlar) - kategoriden bagimsiz
         all_coins = (s["strong_sell"] + s["sell"] + s["notr"]
                      + s["buy"] + s["strong_buy"])
 
         top_longs = sorted(
             [c for c in all_coins if c.long_score >= 60 and c.rsi < 99],
             key=lambda x: x.long_score, reverse=True
-        )[:8]
+        )[:10]
+        top_shorts = sorted(
+            [c for c in all_coins if c.short_score >= 60 and c.rsi < 99],
+            key=lambda x: x.short_score, reverse=True
+        )[:10]
+
+        lines = [
+            f"🔬 <b>MARKET ADAYLARI</b> ({s['scan_time']})",
+            f"━━━━━━━━━━━━━━━━━━",
+            f"{mood_emoji} Piyasa: <b>{s['market_mood']}</b> | "
+            f"₿ %{s['btc_1h']:+.2f}/1s",
+            f"📊 Taranan: {s['total']} coin | "
+            f"⬆️ {len(top_longs)} LONG | ⬇️ {len(top_shorts)} SHORT",
+            f"━━━━━━━━━━━━━━━━━━",
+        ]
+
         if top_longs:
             lines.append(f"\n⬆️ <b>LONG ADAYLARI ({len(top_longs)})</b>")
             for c in top_longs:
                 coin = c.symbol.replace("USDT", "")
                 tracked_tag = "🔄" if c.previously_tracked == "long" else ""
                 decay_tag = "⚠️" if c.rsi_slope_3m < -3 else ""
-                # Korelasyon: GERCEK=⭐ SURU=🐑
                 corr_tag = "⭐" if c.correlation_tag == "GERCEK" else (
                     "🐑" if c.correlation_tag == "SURU" else ""
                 )
@@ -725,11 +675,9 @@ class MarketScanner:
                     f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) "
                     f"RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
+        else:
+            lines.append("\n⬆️ <b>LONG ADAYLARI</b>: yok (skor &lt; 60)")
 
-        top_shorts = sorted(
-            [c for c in all_coins if c.short_score >= 60 and c.rsi < 99],
-            key=lambda x: x.short_score, reverse=True
-        )[:8]
         if top_shorts:
             lines.append(f"\n⬇️ <b>SHORT ADAYLARI ({len(top_shorts)})</b>")
             for c in top_shorts:
@@ -746,38 +694,8 @@ class MarketScanner:
                     f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) "
                     f"RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
-
-        # Sektor Ozeti - hangi sektor bull/bear
-        sector_perf: dict[str, list[float]] = {}
-        for r in self.results:
-            sector_perf.setdefault(r.sector, []).append(r.price_change_1h)
-
-        top_sectors = []
-        for sec, perfs in sector_perf.items():
-            if sec == "Diger" or len(perfs) < 2:
-                continue
-            avg_perf = sum(perfs) / len(perfs)
-            top_sectors.append((sec, avg_perf, len(perfs)))
-        top_sectors.sort(key=lambda x: x[1], reverse=True)
-
-        if top_sectors:
-            lines.append(f"\n🏭 <b>SEKTOR HAREKETI (1s)</b>")
-            # En iyi 3 + en kotu 3
-            for sec, perf, n in top_sectors[:3]:
-                emoji = "🟢" if perf > 0 else "🔴"
-                lines.append(f"  {emoji} {sec:10s} %{perf:+.2f} ({n} coin)")
-            if len(top_sectors) > 6:
-                lines.append("  ...")
-                for sec, perf, n in top_sectors[-3:]:
-                    emoji = "🟢" if perf > 0 else "🔴"
-                    lines.append(f"  {emoji} {sec:10s} %{perf:+.2f} ({n} coin)")
-
-        # Ozet
-        lines.append(f"\n━━━━━━━━━━━━━━━━━━")
-        lines.append(
-            f"🟢🟢 {len(s['strong_buy'])} | 🟢 {len(s['buy'])} | "
-            f"⚪ {len(s['notr'])} | 🔴 {len(real_sell)} | 🔴🔴 {len(real_strong_sell)}"
-        )
+        else:
+            lines.append("\n⬇️ <b>SHORT ADAYLARI</b>: yok (skor &lt; 60)")
 
         return "\n".join(lines)
 

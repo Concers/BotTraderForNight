@@ -16,7 +16,7 @@ TELEGRAM_BOT_TOKEN_2 = os.getenv("TELEGRAM_BOT_TOKEN_2", "").strip() or None
 TELEGRAM_CHAT_ID_2 = os.getenv("TELEGRAM_CHAT_ID_2", "").strip() or None
 
 # --- Risk Yonetimi ---
-MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "7"))
+MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "999"))
 DEFAULT_LEVERAGE = int(os.getenv("DEFAULT_LEVERAGE", "20"))
 CAPITAL_PERCENT_PER_TRADE = float(os.getenv("CAPITAL_PERCENT_PER_TRADE", "14.28"))
 MIN_MARKET_CAP = float(os.getenv("MIN_MARKET_CAP", "45000000"))
