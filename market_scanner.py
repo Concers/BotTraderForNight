@@ -17,6 +17,7 @@ from datetime import datetime
 from logger_setup import setup_logger
 from binance_client import BinanceClient
 from indicators import run_all_indicators, rsi_slope
+from sector_mapping import SectorMapper
 from scoring import CANSLIMScorer
 from short_strategy import analyze_short_setup
 from long_strategy import analyze_long_setup
@@ -94,6 +95,8 @@ class CoinProfile:
         # Agirlikli momentum skorlari (RS*0.4 + RSI*0.3 + RVOL*0.3), 0-100
         self.long_momentum = data.get("long_momentum", 50.0)
         self.short_momentum = data.get("short_momentum", 50.0)
+        # Sektor (CoinGecko: L1, DeFi, AI, Meme, Gaming vb.)
+        self.sector = data.get("sector", "Diger")
         # Anlik funding rate (kontrarian filtre) - pozitif: LONG pahalli, negatif: SHORT pahalli
         self.funding_rate = data.get("funding_rate", 0.0)
         # Onceki taramada STRONG_BUY ise "long", STRONG_SELL ise "short", yoksa None
@@ -127,6 +130,8 @@ class MarketScanner:
         self._prev_strong_sell: set[str] = set()
         # Funding rates cache (tum semboller tek cagride)
         self._funding_rates: dict[str, float] = {}
+        # Sektor haritasi (CoinGecko, 7 gun cache)
+        self.sector_map = SectorMapper()
 
     async def scan(self) -> dict:
         """Tam market taramasi yap."""
@@ -135,6 +140,12 @@ class MarketScanner:
         self.results = []
 
         logger.info("Market Scanner v2 baslatildi...")
+
+        # Sektor cache (7 gun+ eskiyse yenilenir, normalde hizli no-op)
+        try:
+            self.sector_map.refresh_if_stale()
+        except Exception as e:
+            logger.debug(f"Sector refresh atlandi: {e}")
 
         # 1. BTC referans verisi (perf + RVOL + RSI)
         btc_df = self.binance.get_klines("BTCUSDT", interval="3m", limit=200)
@@ -349,6 +360,8 @@ class MarketScanner:
             # Agirlikli momentum skorlari (RS*0.4 + RSI*0.3 + RVOL*0.3)
             "long_momentum": _weighted_momentum(rs, rsi, rvol, side="LONG"),
             "short_momentum": _weighted_momentum(rs, rsi, rvol, side="SHORT"),
+            # Sektor (CoinGecko)
+            "sector": self.sector_map.get(symbol),
             "previously_tracked": (
                 "long" if symbol in self._prev_strong_buy
                 else "short" if symbol in self._prev_strong_sell
@@ -607,6 +620,31 @@ class MarketScanner:
                     f"RSI:{c.rsi:.0f}({c.rsi_slope_3m:+.1f}) "
                     f"RS:{c.relative_strength:+.1f} F:%{f_pct:+.3f}"
                 )
+
+        # Sektor Ozeti - hangi sektor bull/bear
+        sector_perf: dict[str, list[float]] = {}
+        for r in self.results:
+            sector_perf.setdefault(r.sector, []).append(r.price_change_1h)
+
+        top_sectors = []
+        for sec, perfs in sector_perf.items():
+            if sec == "Diger" or len(perfs) < 2:
+                continue
+            avg_perf = sum(perfs) / len(perfs)
+            top_sectors.append((sec, avg_perf, len(perfs)))
+        top_sectors.sort(key=lambda x: x[1], reverse=True)
+
+        if top_sectors:
+            lines.append(f"\n🏭 <b>SEKTOR HAREKETI (1s)</b>")
+            # En iyi 3 + en kotu 3
+            for sec, perf, n in top_sectors[:3]:
+                emoji = "🟢" if perf > 0 else "🔴"
+                lines.append(f"  {emoji} {sec:10s} %{perf:+.2f} ({n} coin)")
+            if len(top_sectors) > 6:
+                lines.append("  ...")
+                for sec, perf, n in top_sectors[-3:]:
+                    emoji = "🟢" if perf > 0 else "🔴"
+                    lines.append(f"  {emoji} {sec:10s} %{perf:+.2f} ({n} coin)")
 
         # Ozet
         lines.append(f"\n━━━━━━━━━━━━━━━━━━")
