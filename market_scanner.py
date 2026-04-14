@@ -502,6 +502,126 @@ class MarketScanner:
             "strong_sell": cats["STRONG_SELL"],
         }
 
+    def generate_funding_report(self) -> str:
+        """
+        Funding Rate Analizi - SADECE LONG/SHORT adaylarindaki coinler.
+
+        En yuksek pozitif (longlar shortlara odem yapiyor -> SHORT bias)
+        En negatif (shortlar longlara oduyor -> LONG bias)
+        BTC funding bilgisi
+        """
+        # Aday coinler: long_score >= 60 VEYA short_score >= 60
+        candidate_symbols = set()
+        for r in self.results:
+            if r.long_score >= 60 or r.short_score >= 60:
+                candidate_symbols.add(r.symbol)
+
+        # Aday coinlerin funding rate'i (CoinProfile'da var)
+        candidates_with_funding = [
+            r for r in self.results if r.symbol in candidate_symbols
+        ]
+
+        if not candidates_with_funding:
+            return (
+                f"📊 <b>FUNDING RATE TARAMASI</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ Aday coin yok (LONG/SHORT score ≥ 60)"
+            )
+
+        # Pozitif (yuksekten dusuge) - SHORT bias
+        positives = sorted(
+            [c for c in candidates_with_funding if c.funding_rate > 0],
+            key=lambda x: -x.funding_rate
+        )[:10]
+
+        # Negatif (en negatiften az negatife) - LONG bias
+        negatives = sorted(
+            [c for c in candidates_with_funding if c.funding_rate < 0],
+            key=lambda x: x.funding_rate
+        )[:10]
+
+        # BTC funding
+        btc_funding = self._funding_rates.get("BTCUSDT", 0.0)
+        btc_funding_pct = btc_funding * 100
+        btc_emoji = ("🔴" if btc_funding > 0.005
+                     else "🟢" if btc_funding < -0.005 else "🟠")
+        btc_label = ("Hafif yuksuli" if btc_funding > 0.005
+                     else "Hafif dususte" if btc_funding < -0.005
+                     else "Notr/Karisik")
+
+        lines = [
+            f"📊 <b>FUNDING RATE TARAMASI</b>",
+            f"<i>{datetime.now().strftime('%Y-%m-%d %H:%M')} · UTC+3</i>",
+            f"<i>Sadece market adaylari ({len(candidates_with_funding)} coin)</i>",
+            f"━━━━━━━━━━━━━━━━━━",
+        ]
+
+        # 🔴 EN YUKSEK POZITIF (SHORT firsati)
+        if positives:
+            lines.append(
+                f"\n🔴 <b>EN YUKSEK POZITIF</b>\n"
+                f"<i>(Longlar oduyor · SHORT'a uygun)</i>"
+            )
+            lines.append("<code> #  Coin           Funding</code>")
+            lines.append("<code>───────────────────────────</code>")
+            for i, c in enumerate(positives, 1):
+                coin = c.symbol.replace("USDT", "")
+                f_pct = c.funding_rate * 100
+                lines.append(
+                    f"<code>{i:2d}  {coin:12s}  %{f_pct:+.4f}</code>"
+                )
+
+        # 🟢 EN NEGATIF (LONG firsati)
+        if negatives:
+            lines.append(
+                f"\n🟢 <b>EN NEGATIF</b>\n"
+                f"<i>(Shortlar oduyor · LONG'a uygun)</i>"
+            )
+            lines.append("<code> #  Coin           Funding</code>")
+            lines.append("<code>───────────────────────────</code>")
+            for i, c in enumerate(negatives, 1):
+                coin = c.symbol.replace("USDT", "")
+                f_pct = c.funding_rate * 100
+                lines.append(
+                    f"<code>{i:2d}  {coin:12s}  %{f_pct:+.4f}</code>"
+                )
+
+        # CIKARIM
+        lines.append(f"\n💡 <b>YORUMLAR</b>")
+        if positives:
+            top_pos = positives[0]
+            lines.append(
+                f"• En kalabalik LONG: <b>{top_pos.symbol.replace('USDT','')}</b> "
+                f"(%{top_pos.funding_rate*100:+.4f}) → SHORT firsati olabilir"
+            )
+        if negatives:
+            top_neg = negatives[0]
+            lines.append(
+                f"• En kalabalik SHORT: <b>{top_neg.symbol.replace('USDT','')}</b> "
+                f"(%{top_neg.funding_rate*100:+.4f}) → LONG firsati olabilir"
+            )
+
+        # BTC bilgisi
+        lines.append(
+            f"• {btc_emoji} BTC: {btc_label}\n"
+            f"  Funding: %{btc_funding_pct:+.4f}"
+        )
+
+        # Trend ozeti
+        lines.append(
+            f"• ₿ BTC trend: 1s %{self.btc_perf_1h:+.2f} · "
+            f"24s %{self.btc_perf_24h:+.2f}"
+        )
+
+        lines.append(f"\n━━━━━━━━━━━━━━━━━━")
+        lines.append(
+            f"📈 Toplam taranan: {len(self.results)} coin | "
+            f"Aday: {len(candidates_with_funding)} | "
+            f"Funding cache: {len(self._funding_rates)}"
+        )
+
+        return "\n".join(lines)
+
     def generate_telegram_report(self) -> str:
         """Telegram icin Market Rontgeni raporu."""
         s = self.get_summary()

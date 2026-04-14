@@ -427,6 +427,13 @@ class TelegramSignalReceiver:
         if hasattr(self, "pozisyonlar_callback") and self.pozisyonlar_callback:
             await self.pozisyonlar_callback()
 
+    async def handle_funding(self, update: Update,
+                              context: ContextTypes.DEFAULT_TYPE):
+        """/funding komutu - aday coinlerin funding rate analizi."""
+        if hasattr(self, "funding_callback") and self.funding_callback:
+            await update.message.reply_text("📊 Funding rate analizi hazirlaniyor...")
+            await self.funding_callback()
+
     async def handle_resetkasa(self, update: Update,
                                 context: ContextTypes.DEFAULT_TYPE):
         """/resetkasa - iki asamali onayla kasayi sifirla. Sadece primary chat."""
@@ -548,6 +555,7 @@ class TelegramSignalReceiver:
             "• /market — Market Rontgeni simdi tara\n"
             "• /scan — Taramayi elle tetikle\n"
             "• /watchlist — Watchlist raporu\n"
+            "• /funding — Aday coinlerin funding rate analizi\n"
             "\n"
             "<b>Sinyal (sadece metin)</b>\n"
             "• BUY ETHUSDT — Manuel LONG\n"
@@ -581,6 +589,7 @@ class TelegramSignalReceiver:
         app.add_handler(CommandHandler("watchlist", self.handle_watchlist))
         app.add_handler(CommandHandler("pozisyonlar", self.handle_pozisyonlar))
         app.add_handler(CommandHandler("p", self.handle_pozisyonlar))
+        app.add_handler(CommandHandler("funding", self.handle_funding))
         app.add_handler(CommandHandler("scan", self.handle_scan))
         app.add_handler(CommandHandler("resetkasa", self.handle_resetkasa))
         app.add_handler(CommandHandler("bildirim", self.handle_bildirim))

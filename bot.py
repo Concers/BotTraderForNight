@@ -495,9 +495,12 @@ class TradingBot:
                     )
                     await self.process_signal(side, coin.symbol, coin_profile=coin)
 
-                # Telegram rapor
+                # Telegram rapor (Market Rontgeni + Funding Rate ozeti)
                 report = self.scanner.generate_telegram_report()
                 await self.notifier.send_message(report, category="market")
+
+                funding_report = self.scanner.generate_funding_report()
+                await self.notifier.send_message(funding_report, category="market")
 
                 # Watchlist guncelle
                 self.scanner.update_watchlists()
@@ -725,6 +728,15 @@ class TradingBot:
             logger.error(f"PDF rapor hatasi: {e}")
             await self.notifier.send_message(f"PDF olusturulamadi: {e}")
 
+    async def handle_funding_command(self):
+        """/funding komutu - aday coinlerin funding rate analizi."""
+        try:
+            funding_report = self.scanner.generate_funding_report()
+            await self.notifier.send_message(funding_report)
+        except Exception as e:
+            logger.error(f"Funding raporu hatasi: {e}")
+            await self.notifier.send_message(f"Funding rapor hatasi: {e}")
+
     async def handle_market_command(self):
         """/market komutu - Market Roentgeni simdi tara."""
         try:
@@ -924,6 +936,7 @@ class TradingBot:
         receiver.reset_callback = self.handle_resetkasa_command
         receiver.depth_callback = self.handle_depth_callback
         receiver.cancel_callback = self.handle_cancel_callback
+        receiver.funding_callback = self.handle_funding_command
         app = receiver.build_app()
 
         async def post_init(application):
