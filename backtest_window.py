@@ -18,8 +18,12 @@ yine de "bu pencerede ne olurdu" sorusuna saglam bir yanit verir.
 """
 
 import argparse
+import os
 import time
 import math
+import urllib.request
+import urllib.parse
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -31,6 +35,7 @@ from indicators import run_all_indicators
 from long_strategy import analyze_long_setup, should_open_long
 from short_strategy import analyze_short_setup, should_open_short
 from logger_setup import setup_logger
+import config
 
 logger = setup_logger("BacktestWindow")
 
@@ -90,6 +95,29 @@ class Trade:
     close_reason: str = ""
     pnl: float = 0.0
     pnl_pct: float = 0.0
+
+
+# -------------------- TELEGRAM --------------------
+
+def send_telegram(text: str) -> bool:
+    """Telegram Bot API'ye sync post. config'deki token + chat_id kullanilir."""
+    token = getattr(config, "TELEGRAM_BOT_TOKEN", None)
+    chat_id = getattr(config, "TELEGRAM_CHAT_ID", None)
+    if not token or not chat_id:
+        logger.warning("Telegram token/chat_id yok, mesaj atlandi.")
+        return False
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+    }).encode()
+    try:
+        with urllib.request.urlopen(url, data=payload, timeout=15) as r:
+            return r.status == 200
+    except Exception as e:
+        logger.error(f"Telegram gonderilemedi: {e}")
+        return False
 
 
 # -------------------- YARDIMCILAR --------------------
@@ -567,6 +595,94 @@ def run(start_tr: str, end_tr: str):
     out_path = f"backtest_window_{start_utc.strftime('%Y%m%d_%H%M')}.csv"
     out.to_csv(out_path, index=False)
     print(f"\nCSV yazildi: {out_path}")
+
+    # -------------------- TELEGRAM SAATLIK RAPOR --------------------
+    print("\n[5/5] Saatlik rapor Telegram'a gonderiliyor...")
+    send_telegram(
+        f"🧪 <b>BACKTEST BASLADI</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ {start_tr} - {end_tr} (TR)\n"
+        f"📦 Sinyal: {len(closed)} | Marjin: ${MARGIN_USDT}x{LEVERAGE}\n"
+        f"💰 Toplam PnL: <b>${total_pnl:+.2f}</b>\n"
+        f"✅ Win rate: {win_rate:.1f}% ({len(wins)}W/{len(losses)}L)"
+    )
+
+    hour = start_utc.replace(minute=0, second=0, microsecond=0)
+    while hour < end_utc:
+        h_end = hour + timedelta(hours=1)
+        # Bu saatte acilan trade'ler
+        in_hour = [t for t in closed if hour <= t.entry_time < h_end]
+
+        hour_tr = hour.astimezone(TR_TZ).strftime("%d.%m %H:%M")
+        h_end_tr = h_end.astimezone(TR_TZ).strftime("%H:%M")
+
+        if not in_hour:
+            send_telegram(
+                f"⏰ <b>{hour_tr} - {h_end_tr} (TR)</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"Sinyal yok."
+            )
+            hour = h_end
+            time.sleep(1.5)  # rate limit
+            continue
+
+        h_pnl = sum(t.pnl for t in in_hour)
+        h_wins = [t for t in in_hour if t.pnl > 0]
+        h_losses = [t for t in in_hour if t.pnl <= 0]
+        h_wr = (len(h_wins) / len(in_hour) * 100) if in_hour else 0
+
+        lines = [
+            f"⏰ <b>{hour_tr} - {h_end_tr} (TR)</b>",
+            f"━━━━━━━━━━━━━━━━━━",
+            f"📦 Acilan: {len(in_hour)} | ✅ {len(h_wins)}W ❌ {len(h_losses)}L",
+            f"💰 PnL: <b>${h_pnl:+.2f}</b> | WR: {h_wr:.0f}%",
+            f"━━━━━━━━━━━━━━━━━━",
+        ]
+        for t in in_hour:
+            et = t.entry_time.astimezone(TR_TZ).strftime("%H:%M")
+            ct = t.close_time.astimezone(TR_TZ).strftime("%H:%M") if t.close_time else "-"
+            emoji = "🟢" if t.side == "BUY" else "🔴"
+            res = "✅" if t.pnl > 0 else "❌"
+            lines.append(
+                f"{emoji} <b>{t.symbol}</b> {t.side} skor:{t.score:.0f} "
+                f"rvol:{t.rvol:.1f}\n"
+                f"   {et}→{ct} {t.entry_price:.6f}→{(t.close_price or 0):.6f}\n"
+                f"   {res} <b>${t.pnl:+.2f}</b> (%{t.pnl_pct:+.2f}) [{t.close_reason}]"
+            )
+        # Telegram mesaj limiti 4096; guvenli parcalayalim
+        msg = "\n".join(lines)
+        if len(msg) > 3800:
+            # Her isleme bir mesaj
+            send_telegram("\n".join(lines[:5]))
+            time.sleep(1)
+            chunk = []
+            cur_len = 0
+            for line in lines[5:]:
+                if cur_len + len(line) > 3800:
+                    send_telegram("\n".join(chunk))
+                    time.sleep(1)
+                    chunk = []
+                    cur_len = 0
+                chunk.append(line)
+                cur_len += len(line) + 1
+            if chunk:
+                send_telegram("\n".join(chunk))
+        else:
+            send_telegram(msg)
+
+        time.sleep(1.5)
+        hour = h_end
+
+    # Final ozet
+    send_telegram(
+        f"🏁 <b>BACKTEST BITTI</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📦 Toplam sinyal: {len(closed)}\n"
+        f"✅ {len(wins)}W ❌ {len(losses)}L | WR: {win_rate:.1f}%\n"
+        f"💰 Toplam PnL: <b>${total_pnl:+.2f}</b>\n"
+        f"📄 CSV: {out_path}"
+    )
+    print("Telegram raporu tamam.")
 
 
 def main():
